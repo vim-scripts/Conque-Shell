@@ -1,0 +1,30 @@
+
+CONQUE
+
+== Requirements ==
+
+   * Vim 7.0+
+   * Linux-like system with pty libraries
+
+== Installation Instructions ==
+
+Copy files from conque/ into your .vim directory, for example:
+
+$HOME/.vim/autoload/conque.vim
+$HOME/.vim/autoload/proc.vim
+$HOME/.vim/autoload/proc.so
+$HOME/.vim/plugin/conque.vim
+$HOME/.vim/syntax/conque.vim
+
+== Usage ==
+
+Type :Conque <command> to run your command in vim, for example:
+
+:Conque bash
+
+== Troubleshooting ==
+
+The most likely cause of trouble will be an incompatible proc.so binary. The provided file should work on most Linux installations, but if you are having trouble it can be built by hand.
+
+Go to the vimproc/ directory and run the command 'make'. Then copy the resulting proc.so from vimproc/autoload/proc.so to $HOME/.vim/autoload/proc.so
+
