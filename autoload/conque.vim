@@ -1,71 +1,68 @@
 " FILE:     autoload/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-"           Shougo Matsushita <Shougo.Matsu@gmail.com> (original VimShell)
-"           Yukihiro Nakadaira (vimproc)
-" MODIFIED: 2009-09-02
-" VERSION:  0.1, for Vim 7.0
+" MODIFIED: 2009-10-01
+" VERSION:  0.2, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
 "
-" This program is free software: you can redistribute it and/or modify
-" it under the terms of the GNU General Public License as published by
-" the Free Software Foundation, either version 3 of the License, or
-" (at your option) any later version.
-"
-" This program is distributed in the hope that it will be useful,
-" but WITHOUT ANY WARRANTY; without even the implied warranty of
-" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-" GNU General Public License for more details.
-"
-" You should have received a copy of the GNU General Public License
-" along with this program.  If not, see <http://www.gnu.org/licenses/>.
+" MIT License
+" 
+" Permission is hereby granted, free of charge, to any person obtaining a copy
+" of this software and associated documentation files (the "Software"), to deal
+" in the Software without restriction, including without limitation the rights
+" to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+" copies of the Software, and to permit persons to whom the Software is
+" furnished to do so, subject to the following conditions:
+" 
+" The above copyright notice and this permission notice shall be included in
+" all copies or substantial portions of the Software.
+" 
+" THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+" IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+" FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+" AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+" LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+" OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+" THE SOFTWARE.
 " }}}
 
 " Open a command in Conque.
 " This is the root function that is called from Vim to start up Conque.
-function! conque#open(command)"{{{
+function! conque#open(...)"{{{
+    let command = get(a:000, 0, '')
+    let hooks   = get(a:000, 1, [])
 
-    if empty(a:command)
+
+    if empty(command)
         echohl WarningMsg | echomsg "No command found" | echohl None
         return 0
     endif
 
     " configure shell buffer display and key mappings
-    call s:set_buffer_settings(a:command)
+    call s:set_buffer_settings(command, hooks)
 
     " set global environment variables
     call s:set_environment()
 
-    " load vimproc C library
-    let l:proc_lib = proc#import()
-
     " open command
     try
-        let l:proc = l:proc_lib.ptyopen(split(a:command))
+        let b:subprocess = subprocess#new()
+        call b:subprocess.open(command)
     catch 
-        let l:error = printf('File: "%s" is not found.', a:command)
+        let l:error = printf('Unable to open command: ', command)
         echohl WarningMsg | echomsg l:error | echohl None
         return 0
     endtry
 
-    " always check for zombies before over-writing them
-    if exists('b:proc')
-        " more zombies than usual today
-        call conque#force_exit()
-    endif
-
     " Set variables.
-    let b:vimproc_lib = l:proc_lib
-    let b:proc = l:proc
     let b:command_history = []
     let b:prompt_history = {}
     let b:current_command = ''
     let b:command_position = 0
-    let b:tab_complete_history = {}
 
     " read welcome message from command
-    call s:read()
+    call s:read(0.5)
 
 
     startinsert!
@@ -76,24 +73,28 @@ endfunction"}}}
 " XXX - probably should delegate this to logic in .bashrc?
 function! s:set_environment()"{{{
     let $TERM = "dumb"
-    let $TERMCAP = "COLUMNS=" . winwidth(0)
+    "let $TERMCAP = "COLUMNS=" . winwidth(0)
     let $VIMSHELL = 1
-    let $COLUMNS = winwidth(0) " these get reset by terminal anyway
+    let $COLUMNS = winwidth(0) - 8 " these get reset by terminal anyway
     let $LINES = winheight(0)
     
 endfunction"}}}
 
 " buffer settings, layout, key mappings, and auto commands
-function! s:set_buffer_settings(command)"{{{
-    split
-    execute "edit " . substitute(a:command, ' ', '_', 'g') . "@conque"
+function! s:set_buffer_settings(command, pre_hooks)"{{{
+    " optional hooks to execute, e.g. 'split'
+    for h in a:pre_hooks
+        execute h
+    endfor
+
+    execute "edit " . substitute(a:command, ' ', '_', 'g') . "@" . bufnr('.', 1)
     setlocal buftype=nofile  " this buffer is not a file, you can't save it
     setlocal nonumber        " hide line numbers
     setlocal foldcolumn=1    " reasonable left margin
     setlocal nowrap          " default to no wrap (esp with MySQL)
     setlocal noswapfile      " don't bother creating a .swp file
     setfiletype conque        " useful
-    setlocal syntax=conque    " see syntax/conque.vim
+    execute "setlocal syntax=".g:Conque_Syntax
 
     " run the current command
     nnoremap <buffer><silent><CR>        :<C-u>call conque#run()<CR>
@@ -113,6 +114,15 @@ function! s:set_buffer_settings(command)"{{{
     " escape
     nnoremap <buffer><silent><C-e>       :<C-u>call conque#escape()<CR>
     inoremap <buffer><silent><C-e>       <ESC>:<C-u>call conque#escape()<CR>
+    " eof
+    nnoremap <buffer><silent><C-d>       :<C-u>call conque#eof()<CR>
+    inoremap <buffer><silent><C-d>       <ESC>:<C-u>call conque#eof()<CR>
+    " suspend
+    nnoremap <buffer><silent><C-z>       :<C-u>call conque#suspend()<CR>
+    inoremap <buffer><silent><C-z>       <ESC>:<C-u>call conque#suspend()<CR>
+    " quit
+    nnoremap <buffer><silent><C-\>       :<C-u>call conque#quit()<CR>
+    inoremap <buffer><silent><C-\>       <ESC>:<C-u>call conque#quit()<CR>
 
     " handle unexpected closing of shell
     " passes HUP to main and all child processes
@@ -123,25 +133,35 @@ endfunction"}}}
 
 " controller to execute current line
 function! conque#run()"{{{
-
-    if !exists('b:proc')
-        echohl WarningMsg | echomsg "Not a shell" | echohl None
+    if !exists('b:subprocess')
         return
     endif
+
+
     call conque#write(1)
-    call s:read()
+    call s:read(g:Conque_Read_Timeout)
 
 endfunction"}}}
 
 " execute current line, but return output as string instead of printing to buffer
-function! conque#run_return()"{{{
-    if !exists('b:proc')
-        echohl WarningMsg | echomsg "Not a shell" | echohl None
-        return
-    endif
+function! conque#run_return(timeout)"{{{
     call conque#write(0)
-    let l:output = conque#read_return_raw()
-    return l:output
+    let l:output = conque#read_return_raw(a:timeout)
+    let l:output_string = join(l:output, "\n")
+
+    " strip bells, leave whistles
+    if l:output_string =~ nr2char(7)
+        let l:output_string = substitute(l:output_string, nr2char(7), '', 'g')
+        echohl WarningMsg | echomsg "!!!BELL!!!" | echohl None
+    endif
+
+    " strip backspaces out of output
+    while l:output_string =~ '\b'
+        let l:output_string = substitute(l:output_string, '[^\b]\b', '', 'g')
+        let l:output_string = substitute(l:output_string, '^\b', '', 'g')
+    endwhile
+
+    return l:output_string
 endfunction"}}}
 
 " write current line to pty
@@ -159,13 +179,14 @@ function! conque#write(add_newline)"{{{
     " run the command!
     try
         if a:add_newline == 1
-            call b:proc.write(l:in . "\<NL>")
+            call b:subprocess.write(l:in . "\<NL>")
         else
-            call b:proc.write(l:in)
+            call b:subprocess.write(l:in)
         endif
     catch
-        echohl WarningMsg | echomsg 'command fail' | echohl None
+        echohl WarningMsg | echomsg 'No process' | echohl None
         call conque#exit()
+        return
     endtry
     
     " record command history
@@ -181,13 +202,14 @@ function! conque#write(add_newline)"{{{
     endif
     let b:current_command = l:in
     let b:command_position = 0
-    if exists("b:tab_complete_history['".line('.')."']")
-        call remove(b:tab_complete_history, line('.'))
-    endif
 
     " we're doing something
     if a:add_newline == 1
-        call append(line('$'), '...')
+        if g:Conque_Use_Filler == 1
+            call append(line('$'), '...')
+        else
+            call append(line('$'), '')
+        endif
     endif
 
     normal! G$
@@ -203,9 +225,6 @@ function! s:get_command()"{{{
 
   elseif l:in == '...'
     " Working
-
-  elseif exists("b:tab_complete_history['".line('.')."']")
-    let l:in = l:in[len(b:tab_complete_history[line('.')]) : ]
 
   elseif exists("b:prompt_history['".line('.')."']")
     let l:in = l:in[len(b:prompt_history[line('.')]) : ]
@@ -252,27 +271,18 @@ function! s:get_command()"{{{
 endfunction"}}}
 
 " read from pty and write to buffer
-function! s:read()"{{{
+function! s:read(timeout)"{{{
 
-    " read AND write to buffer
-    let l:read = b:proc.read(-1, 40)
-    let l:output = ''
-    while l:read != ''
-        let l:output = l:output . l:read
-        let l:read = b:proc.read(-1, 40)
-    endwhile
-    " print to buffer
+    try
+        let l:output = b:subprocess.read(a:timeout)
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+
     call s:print_buffer(l:output)
     redraw
-
-
-    " check for fail
-    if b:proc.eof
-        echohl WarningMsg | echomsg 'EOF' | echohl None
-        call conque#exit()
-        normal! G$
-        return
-    endif
 
     " record prompt used on this line
     let b:prompt_history[line('.')] = getline('.')
@@ -283,28 +293,30 @@ function! s:read()"{{{
 endfunction"}}}
 
 " read from pty and return output as string
-function! conque#read_return_raw()"{{{
+function! conque#read_return_raw(timeout)"{{{
 
-    " read AND write to buffer
-    let l:read = b:proc.read(-1, 500)
-    let l:output = l:read
-    while l:read != ''
-        let l:read = b:proc.read(-1, 500)
-        let l:output = l:output . l:read
-    endwhile
+    try
+        let l:output = b:subprocess.read(a:timeout)
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
 
     " ready to insert now
     return l:output
 endfunction"}}}
 
 " parse output from pty and update buffer
-function! s:print_buffer(string)"{{{
-    if a:string == ''
+function! s:print_buffer(read_lines)"{{{
+    let l:string = join(a:read_lines, "\n")
+
+    if l:string == ''
         return
     endif
 
     " Convert encoding for system().
-    let l:string = iconv(a:string, 'utf-8', &encoding) 
+    let l:string = iconv(l:string, 'utf-8', &encoding) 
 
     " check for Bells
     if l:string =~ nr2char(7)
@@ -312,12 +324,21 @@ function! s:print_buffer(string)"{{{
         echohl WarningMsg | echomsg "For shame!" | echohl None
     endif
 
+    " strip backspaces out of output
+    while l:string =~ '\b'
+        let l:string = substitute(l:string, '[^\b]\b', '', 'g')
+        let l:string = substitute(l:string, '^\b', '', 'g')
+    endwhile
+
     " Strip <CR>.
     let l:string = substitute(substitute(l:string, '\r', '', 'g'), '\n$', '', '')
     let l:lines = split(l:string, '\n', 1)
 
     " strip off command repeated by the ECHO terminal flag
     if l:lines[0] == b:current_command
+        let l:lines = l:lines[1:]
+    " will usually get rid of ugly trash produced by ECHO + super long commands
+    elseif len(b:current_command) > winwidth(0) - 20 && l:lines[0][0:20] == b:current_command[0:20] && l:lines[0][-5:] == b:current_command[-5:]
         let l:lines = l:lines[1:]
     endif
 
@@ -334,44 +355,50 @@ function! s:print_buffer(string)"{{{
     normal! G$
 endfunction"}}}
 
+function! conque#on_exit() "{{{
+    augroup conque 
+        autocmd! * <buffer>
+    augroup END
+
+    setfiletype sh
+    unlet b:subprocess
+
+endfunction "}}}
+
 " kill process pid with SIGTERM
 " since most shells ignore SIGTERM there's a good chance this will do nothing
 function! conque#exit()"{{{
-    if !exists('b:proc')
-        echohl WarningMsg | echomsg "huh no proc exists" | echohl None
-        return
+
+    if b:subprocess.get_status() == 1
+        " Kill process.
+        try
+            " 15 == SIGTERM
+            call b:subprocess.close()
+        catch /No such process/
+        endtry
     endif
 
-    " Kill process.
-    try
-        " 15 == SIGTERM
-        call b:vimproc_lib.api.vp_kill(b:proc.pid, 15)
-    catch /No such process/
-    endtry
-
-    unlet b:vimproc_lib
-    unlet b:proc
+    call append(line('$'), '*Exit*')
+    call conque#on_exit()
+    normal G
 endfunction"}}}
 
 " kill process pid with SIGKILL
 " undesirable, but effective
 function! conque#force_exit()"{{{
 
-    if !exists('b:proc')
-        return
+    if b:subprocess.get_status() == 1
+        " Kill processes.
+        try
+            " 9 == SIGKILL
+            call b:subprocess.kill()
+            call append(line('$'), '*Killed*')
+        catch /No such process/
+        endtry
     endif
 
-    " Kill processes.
-    try
-        " 9 == SIGKILL
-        call b:vimproc_lib.api.vp_kill(b:proc.pid, 9)
-        call append(line('$'), '*Killed*')
-    catch /No such process/
-    endtry
-
-    unlet b:vimproc_lib
-    unlet b:proc
-
+    call conque#on_exit()
+    normal G
 endfunction"}}}
 
 " kill process pid with SIGHUP
@@ -379,21 +406,17 @@ endfunction"}}}
 " it should pass the signall to all children before killing the parent process
 function! conque#hang_up()"{{{
 
-    if !exists('b:proc')
-        return
+    if b:subprocess.get_status() == 1
+        " Kill processes.
+        try
+            " 1 == HUP
+            call b:subprocess.hang_up()
+            call append(line('$'), '*Killed*')
+        catch /No such process/
+        endtry
     endif
 
-    " Kill processes.
-    try
-        " 1 == HUP
-        call b:vimproc_lib.api.vp_kill(b:proc.pid, 1)
-        call append(line('$'), '*Killed*')
-    catch /No such process/
-    endtry
-
-    unlet b:vimproc_lib
-    unlet b:proc
-
+    call conque#on_exit()
 endfunction"}}}
 
 " load previous command
@@ -440,9 +463,7 @@ endfunction"}}}
 " if tab completion has initiated, prevent deleting partial command already sent to pty
 function! s:delete_backword_char()"{{{
     " identify prompt
-    if exists('b:tab_complete_history[line(".")]')
-        let l:prompt = b:tab_complete_history[line('.')]
-    elseif exists('b:prompt_history[line(".")]')
+    if exists('b:prompt_history[line(".")]')
         let l:prompt = b:prompt_history[line('.')]
     else
         return "\<BS>"
@@ -456,8 +477,15 @@ function! s:delete_backword_char()"{{{
 endfunction"}}}
 
 " tab complete current line
-" TODO: integrate multiple options with Vim auto-complete menu
+" TODO: integrate multiple options with Vim auto-complete menu?
+" XXX XXX XXX: The stupidity of this function is spiraling out of control
 function! s:tab_complete()"{{{
+    " this stuff only really works with pty
+    if b:subprocess.get_library_name() != 'pty'
+        echohl WarningMsg | echomsg "Tab complete disabled when using 'popen' library" | echohl None
+        return
+    endif
+
     " Insert <TAB>.
     if exists('b:tab_complete_history[line(".")]')
         let l:prompt = b:tab_complete_history[line('.')]
@@ -467,64 +495,169 @@ function! s:tab_complete()"{{{
         let l:prompt = ''
     endif
 
+    if !exists('b:tab_count')
+        let b:tab_count = 1
+    endif
+
     let l:working_line = getline('.')
     let l:working_command = l:working_line[len(l:prompt) : len(l:working_line)]
 
-    call setline(line('.'), getline('.') . "\<TAB>")
+    for i in range(1, b:tab_count)
+        call setline(line('.'), getline('.') . "\<TAB>")
+    endfor
 
-    let l:candidate = conque#run_return()
-    let l:extra = substitute(l:candidate, '^'.l:working_command, '', '')
+    let l:candidate = conque#run_return(g:Conque_Tab_Timeout)
+    call setline(line('.'), l:working_line)
+    let l:extra = l:candidate
+    let l:wlen = len(l:working_command)
+    if l:candidate[0 : l:wlen - 1] == l:working_command
+        let l:extra = l:candidate[l:wlen :]
+    endif
 
-    if l:extra == nr2char(7)
+    if l:extra == nr2char(7) || l:extra == ''
         call setline(line('.'), l:working_line)
-        let b:tab_complete_history[line('.')] = getline(line('.'))
+        "let b:tab_complete_history[line('.')] = getline(line('.'))
         startinsert!
-        echohl WarningMsg | echomsg "No completion found" | echohl None
+        "echohl WarningMsg | echomsg "No completion found" | echohl None
+        call b:subprocess.write("\<C-u>")
+        let l:throwaway = conque#read_return_raw(0.001)
+        let b:prompt_history[line('$')] = l:prompt
+        let b:tab_count = 2
         return
     endif
 
-    call setline(line('.'), l:prompt . l:candidate)
+    let b:tab_count = 1
 
-    let b:tab_complete_history[line('.')] = getline(line('.'))
+    let l:extra = substitute(l:extra, '\r', '', 'g')
+    let l:extra_lines = split(l:extra, '\n', 1)
 
+    " automatically squash extended listing
+    if l:extra =~ '(y or n)$'
+        call append(line('$'), l:extra_lines)
+        call append(line('$'), '... Conque has kill extended listing until a later version ...')
+        call b:subprocess.write("n")
+        call b:subprocess.write("\<C-u>")
+        let l:throwaway = conque#read_return_raw(0.001)
+        call append(line('$'), l:working_line)
+        let b:prompt_history[line('$')] = l:prompt
+        normal G$
+        startinsert!
+        return
+    endif
+
+    let l:pos = 1
+    for l:line in l:extra_lines
+        if l:pos == 1
+            call setline(line('$'), getline(line('$')) . l:line)
+        else
+            call append(line('$'), l:line)
+        endif
+        let l:pos = l:pos + 1
+    endfor
+
+    "let b:tab_complete_history[line('$')] = getline(line('$'))
+
+    let l:last_line = getline(line('$'))
+    "if l:last_line =~ '^' . l:working_line
+        call b:subprocess.write("\<C-u>")
+        let l:throwaway = conque#read_return_raw(0.001)
+        let b:prompt_history[line('$')] = l:prompt
+    "endif
+
+    normal G$
     startinsert!
 endfunction"}}}
 
 " implement <C-u>
 " especially useful to clear a tab completion line already sent to pty
 function! conque#kill_line()"{{{
-  " send <C-u> to pty
-  call b:proc.write("\<C-u>")
+    " send <C-u> to pty
+    try
+        call b:subprocess.write("\<C-u>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
 
-  " we are throwing away the output here, assuming <C-u> never fails to do as expected
-  let l:hopefully_just_backspaces = conque#read_return_raw()
+    " we are throwing away the output here, assuming <C-u> never fails to do as expected
+    let l:hopefully_just_backspaces = conque#read_return_raw(0.5)
 
-  " clear tab completion for this line
-  if exists("b:tab_complete_history['".line('.')."']")
-      call remove(b:tab_complete_history, line('.'))
-  endif
-
-  " restore empty prompt
-  call setline(line('.'), b:prompt_history[line('.')])
-  normal! G$
-  startinsert!
+    " restore empty prompt
+    call setline(line('.'), b:prompt_history[line('.')])
+    normal! G$
+    startinsert!
 endfunction"}}}
 
 " implement <C-c>
 " should send SIGINT to proc
 function! conque#sigint()"{{{
-  " send <C-c> to pty
-  call b:proc.write("\<C-c>")
-  call s:read()
+    " send <C-c> to pty
+    try
+        call b:subprocess.write("\<C-c>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+    call s:read(0.5)
 endfunction"}}}
 
 " implement <Esc>
 " should send <Esc> to proc
 " Useful if Vim is launched inside of conque
 function! conque#escape()"{{{
-  " send <Esc> to pty
-  call b:proc.write("\<Esc>")
-  call s:read()
+    " send <Esc> to pty
+    try
+        call b:subprocess.write("\<Esc>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+    call s:read(0.5)
+endfunction"}}}
+
+" implement <C-z>
+" should suspend foreground process
+function! conque#suspend()"{{{
+    " send <C-z> to pty
+    try
+        call b:subprocess.write("\<C-z>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+    call s:read(0.5)
+endfunction"}}}
+
+" implement <C-d>
+" should send EOF
+function! conque#eof()"{{{
+    " send <C-d> to pty
+    try
+        call b:subprocess.write("\<C-d>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+    call s:read(0.5)
+endfunction"}}}
+
+" implement <C-\>
+" should send QUIT
+function! conque#quit()"{{{
+    " send <C-\> to pty
+    try
+        call b:subprocess.write("\<C-\\>")
+    catch
+        echohl WarningMsg | echomsg 'no process' | echohl None
+        call conque#exit()
+        return
+    endtry
+    call s:read(0.5)
 endfunction"}}}
 
 
