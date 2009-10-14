@@ -1,7 +1,7 @@
 " FILE:     syntax/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-01
-" VERSION:  0.2, for Vim 7.0
+" MODIFIED: 2009-10-13
+" VERSION:  0.3, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -28,35 +28,51 @@
 " }}}
 
 " MySQL
-syn match MySQLTableHead "^|.*|$" nextgroup=MySQLTableDivide contains=MySQLTableBar oneline skipwhite skipnl
-syn match MySQLTableBody "^|.*|$" nextgroup=MySQLTableBody,MySQLTableEnd contains=MySQLTableBar,MySQLNull,MySQLSpecial,MySQLNumber,String,Number oneline skipwhite skipnl
+syn match MySQLTableHead "^|.*| \?$" nextgroup=MySQLTableDivide contains=MySQLTableBar oneline skipwhite skipnl
+syn match MySQLTableBody "^|.*| \?$" nextgroup=MySQLTableBody,MySQLTableEnd contains=MySQLTableBar,MySQLNull,MySQLBool,MySQLNumber,MySQLStorageClass oneline skipwhite skipnl
 syn match MySQLTableEnd "^+[+-]\++$" oneline 
 syn match MySQLTableDivide "^+[+-]\++$" nextgroup=MySQLTableBody oneline skipwhite skipnl
 syn match MySQLTableStart "^+[+-]\++$" nextgroup=MySQLTableHead oneline skipwhite skipnl
 syn match MySQLTableBar "|" contained
 syn match MySQLNull " NULL " contained
-syn match MySQLSpecial " YES " contained
-syn match MySQLSpecial " NO " contained
-syn match MySQLSpecial " PRI " contained
-syn match MySQLSpecial " MUL " contained
-syn match MySQLSpecial " CURRENT_TIMESTAMP " contained
-syn match MySQLSpecial " auto_increment " contained
+syn match MySQLBool " YES " contained
+syn match MySQLBool " NO " contained
+syn match MySQLStorageClass " PRI " contained
+syn match MySQLStorageClass " MUL " contained
+syn match MySQLStorageClass " UNI " contained
+syn match MySQLStorageClass " CURRENT_TIMESTAMP " contained
+syn match MySQLStorageClass " auto_increment " contained
 syn match MySQLNumber " \d\+ " contained
 syn match MySQLQueryStat "^\d\+ rows\? in set.*" oneline
-syn match MySQLPrompt "^.\?mysql> " oneline
-syn match MySQLPrompt "^    -> " oneline
+syn match MySQLPrompt "^.\?mysql>" oneline
+syn match MySQLPrompt "^    ->" oneline
 
 syn case ignore
 syn keyword Keyword select count max show table status like as from left right outer inner join where group by having limit offset order desc asc show
 syn case match
 
 " Typical Prompt
-syn match ConquePrompt "^\[.\+\]\$" oneline
+syn match ConquePrompt '^.*\$' oneline
 syn match ConqueWait "^\.\.\.$" oneline
-syn region String start=+'+ end=+'+ skip=+\\'+  oneline
-syn region String start=+"+ end=+"+ skip=+\\"+  oneline
-syn region String start=+`+ end=+`+ skip=+\\`+ oneline
+syn region ConqueString start=+'+ end=+'+ skip=+\\'+  oneline
+syn region ConqueString start=+"+ end=+"+ skip=+\\"+  oneline
+syn region ConqueString start=+`+ end=+`+ skip=+\\`+ oneline
 
+hi def link ConqueString String
+hi def link ConquePrompt Identifier
+hi def link ConqueWait Ignore
 
+hi def link MySQLPrompt Identifier
+hi def link MySQLTableHead Title
+hi def link MySQLTableBody Normal
+hi def link MySQLTableEnd Comment
+hi def link MySQLTableDivide Comment
+hi def link MySQLTableStart Comment
+hi def link MySQLTableBar Comment
+hi def link MySQLNull Comment
+hi def link MySQLBool Boolean
+hi def link MySQLStorageClass Type
+hi def link MySQLNumber Number
+hi def link MySQLQueryStat Comment
 
 " vim: foldmethod=marker

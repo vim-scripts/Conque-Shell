@@ -1,10 +1,8 @@
 " FILE:     autoload/subprocess/proc_py.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-01
-" VERSION:  0.2, for Vim 7.0
+" MODIFIED: 2009-10-13
+" VERSION:  0.3, for Vim 7.0
 " LICENSE:  MIT License "{{{
-" Subprocess.vim - subprocess access from Vim
-"
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal
 " in the Software without restriction, including without limitation the rights
@@ -37,57 +35,57 @@ endfunction "}}}
 " API methods
 
 function! s:lib.open(command) "{{{
-    let b:conque_id = string(bufnr('.', 1))
-    execute ":python proc".b:conque_id." = proc_py()"
-    execute ":python proc".b:conque_id.".open('" . s:python_escape(a:command) . "')"
+    let b:subprocess_id = 'b' . string(localtime())
+    execute ":python proc".b:subprocess_id." = proc_py()"
+    execute ":python proc".b:subprocess_id.".open('" . s:python_escape(a:command) . "')"
 endfunction "}}}
 
 function! s:lib.read(...) "{{{
     let timeout = get(a:000, 0, 0.2)
     let b:proc_py_output = []
-    execute ":python proc".b:conque_id.".read(" . string(timeout) . ")"
+    execute ":python proc".b:subprocess_id.".read(" . string(timeout) . ")"
     return b:proc_py_output
 endfunction "}}}
 
 function! s:lib.write(command) "{{{
-    execute ":python proc".b:conque_id.".write('" . s:python_escape(a:command) . "')"
+    execute ":python proc".b:subprocess_id.".write('" . s:python_escape(a:command) . "')"
 endfunction "}}}
 
 " Try to close process gracefully
 " Linux signal 15, Windows close()
 function! s:lib.close() "{{{
-    execute ":python proc".b:conque_id.".close()"
+    execute ":python proc".b:subprocess_id.".close()"
 endfunction "}}}
 
 " Close process forcefully
 " Linux signal 9, Windows close()
 function! s:lib.kill() "{{{
-    execute ":python proc".b:conque_id.".kill()"
+    execute ":python proc".b:subprocess_id.".kill()"
 endfunction "}}}
 
 " Abandon process
 " Linux signal 1, Windows close()
 function! s:lib.hang_up() "{{{
-    execute ":python proc".b:conque_id.".hang_up()"
+    execute ":python proc".b:subprocess_id.".hang_up()"
 endfunction "}}}
 
 " Send an interrupt to process
 " Typically <C-c>
 function! s:lib.interrupt() "{{{
-    execute ":python proc".b:conque_id.".interrupt()"
+    execute ":python proc".b:subprocess_id.".interrupt()"
 endfunction "}}}
 
 " Am I alive?
 function! s:lib.get_status() "{{{
     let b:proc_py_status = 1
-    execute ":python proc".b:conque_id.".get_status()"
+    execute ":python proc".b:subprocess_id.".get_status()"
     return b:proc_py_status
 endfunction "}}}
 
 " what library am I using to run the subprocess
 function! s:lib.get_library_name() "{{{
     let b:proc_py_lib = 'unknown'
-    execute ":python proc".b:conque_id.".get_library_name()"
+    execute ":python proc".b:subprocess_id.".get_library_name()"
     return b:proc_py_lib
 endfunction "}}}
 
@@ -206,16 +204,17 @@ class proc_py:
 
     # read from pty
     # XXX - select.poll() doesn't work in OS X!!!!!!!
-    def read(self, timeout = 0.1): # {{{
+    def read(self, timeout = 100): # {{{
 
         output = ''
+        rtimeout = float(timeout) / 1000
 
         # score
         if use_pty:
 
             # what, no do/while?
             while 1:
-                s_read, s_write, s_error = select.select( [ self.fd ], [], [], timeout)
+                s_read, s_write, s_error = select.select( [ self.fd ], [], [], rtimeout)
 
                 lines = ''
                 for s_fd in s_read:
@@ -227,7 +226,7 @@ class proc_py:
 
         # urk, windows
         else: 
-            time.sleep(timeout)
+            time.sleep(rtimeout)
 
             count = 0
             count = os.fstat(self.outd)[stat.ST_SIZE]

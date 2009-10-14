@@ -1,7 +1,7 @@
 " FILE:     autoload/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-01
-" VERSION:  0.2, for Vim 7.0
+" MODIFIED: 2009-10-13
+" VERSION:  0.3, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -33,7 +33,6 @@ function! conque#open(...)"{{{
     let command = get(a:000, 0, '')
     let hooks   = get(a:000, 1, [])
 
-
     if empty(command)
         echohl WarningMsg | echomsg "No command found" | echohl None
         return 0
@@ -58,11 +57,12 @@ function! conque#open(...)"{{{
     " Set variables.
     let b:command_history = []
     let b:prompt_history = {}
+    let b:fold_history = {}
     let b:current_command = ''
     let b:command_position = 0
 
     " read welcome message from command
-    call s:read(0.5)
+    call s:read(500)
 
 
     startinsert!
@@ -72,12 +72,10 @@ endfunction"}}}
 " set shell environment vars
 " XXX - probably should delegate this to logic in .bashrc?
 function! s:set_environment()"{{{
-    let $TERM = "dumb"
+    "let $TERM = "dumb"
     "let $TERMCAP = "COLUMNS=" . winwidth(0)
-    let $VIMSHELL = 1
     let $COLUMNS = winwidth(0) - 8 " these get reset by terminal anyway
     let $LINES = winheight(0)
-    
 endfunction"}}}
 
 " buffer settings, layout, key mappings, and auto commands
@@ -87,14 +85,15 @@ function! s:set_buffer_settings(command, pre_hooks)"{{{
         execute h
     endfor
 
-    execute "edit " . substitute(a:command, ' ', '_', 'g') . "@" . bufnr('.', 1)
+    execute "edit " . substitute(a:command, ' ', '_', 'g') . "@" . string(bufnr('$', 1)+1)
     setlocal buftype=nofile  " this buffer is not a file, you can't save it
     setlocal nonumber        " hide line numbers
     setlocal foldcolumn=1    " reasonable left margin
     setlocal nowrap          " default to no wrap (esp with MySQL)
     setlocal noswapfile      " don't bother creating a .swp file
-    setfiletype conque        " useful
+    setfiletype conque       " useful
     execute "setlocal syntax=".g:Conque_Syntax
+    setlocal foldmethod=manual
 
     " run the current command
     nnoremap <buffer><silent><CR>        :<C-u>call conque#run()<CR>
@@ -137,10 +136,8 @@ function! conque#run()"{{{
         return
     endif
 
-
     call conque#write(1)
     call s:read(g:Conque_Read_Timeout)
-
 endfunction"}}}
 
 " execute current line, but return output as string instead of printing to buffer
@@ -166,7 +163,6 @@ endfunction"}}}
 
 " write current line to pty
 function! conque#write(add_newline)"{{{
-
     " pull command from the buffer
     let l:in = s:get_command()
     
@@ -198,6 +194,7 @@ function! conque#write(add_newline)"{{{
         let l:hc = l:in
     endif
     if l:hc != '' && l:hc != '...' && l:hc !~ '\t$'
+        let b:fold_history[line('.')] = 1
         call add(b:command_history, l:hc)
     endif
     let b:current_command = l:in
@@ -272,7 +269,6 @@ endfunction"}}}
 
 " read from pty and write to buffer
 function! s:read(timeout)"{{{
-
     try
         let l:output = b:subprocess.read(a:timeout)
     catch
@@ -284,17 +280,17 @@ function! s:read(timeout)"{{{
     call s:print_buffer(l:output)
     redraw
 
+    " ready to insert now
+    normal! G$
+
     " record prompt used on this line
     let b:prompt_history[line('.')] = getline('.')
 
-    " ready to insert now
-    normal! G$
     startinsert!
 endfunction"}}}
 
 " read from pty and return output as string
 function! conque#read_return_raw(timeout)"{{{
-
     try
         let l:output = b:subprocess.read(a:timeout)
     catch
@@ -317,12 +313,6 @@ function! s:print_buffer(read_lines)"{{{
 
     " Convert encoding for system().
     let l:string = iconv(l:string, 'utf-8', &encoding) 
-
-    " check for Bells
-    if l:string =~ nr2char(7)
-        let l:string = substitute(l:string, nr2char(7), '', 'g')
-        echohl WarningMsg | echomsg "For shame!" | echohl None
-    endif
 
     " strip backspaces out of output
     while l:string =~ '\b'
@@ -349,10 +339,26 @@ function! s:print_buffer(read_lines)"{{{
     endif
 
     " write to buffer
-    call setline(line('$'), l:lines)
+    let l:pos = 1
+    for eline in l:lines
+        if l:pos == 1
+            call setline(line('$'), eline)
+        else
+            call append(line('$'), eline)
+        endif
+        normal! G$
+        call subprocess#shell_translate#process_current_line()
+        let l:pos = l:pos + 1
+    endfor
 
-    " Set cursor.
-    normal! G$
+    " fold output
+    if g:Conque_Folding == 1
+        if !exists('b:fold_history[line("$")-1]') && max(keys(b:fold_history)) < line("$")-1 && len(keys(b:fold_history)) > 0 && getline(line('$')) != getline(line('$')-1)
+            let l:fold_command = max(keys(b:fold_history)) . "," . (line("$")-1) . "fo"
+            execute l:fold_command
+            normal! kzoG$
+        endif
+    endif
 endfunction"}}}
 
 function! conque#on_exit() "{{{
@@ -518,7 +524,6 @@ function! s:tab_complete()"{{{
         call setline(line('.'), l:working_line)
         "let b:tab_complete_history[line('.')] = getline(line('.'))
         startinsert!
-        "echohl WarningMsg | echomsg "No completion found" | echohl None
         call b:subprocess.write("\<C-u>")
         let l:throwaway = conque#read_return_raw(0.001)
         let b:prompt_history[line('$')] = l:prompt
@@ -600,7 +605,7 @@ function! conque#sigint()"{{{
         call conque#exit()
         return
     endtry
-    call s:read(0.5)
+    call s:read(500)
 endfunction"}}}
 
 " implement <Esc>
@@ -615,7 +620,7 @@ function! conque#escape()"{{{
         call conque#exit()
         return
     endtry
-    call s:read(0.5)
+    call s:read(500)
 endfunction"}}}
 
 " implement <C-z>
@@ -629,7 +634,7 @@ function! conque#suspend()"{{{
         call conque#exit()
         return
     endtry
-    call s:read(0.5)
+    call s:read(500)
 endfunction"}}}
 
 " implement <C-d>
@@ -643,7 +648,7 @@ function! conque#eof()"{{{
         call conque#exit()
         return
     endtry
-    call s:read(0.5)
+    call s:read(500)
 endfunction"}}}
 
 " implement <C-\>
@@ -657,8 +662,7 @@ function! conque#quit()"{{{
         call conque#exit()
         return
     endtry
-    call s:read(0.5)
+    call s:read(500)
 endfunction"}}}
-
 
 " vim: foldmethod=marker
