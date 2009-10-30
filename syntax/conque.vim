@@ -1,7 +1,9 @@
 " FILE:     syntax/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-13
-" VERSION:  0.3, for Vim 7.0
+"           Shougo Matsushita <Shougo.Matsu@gmail.com> (original VimShell)
+"           Yukihiro Nakadaira (vimproc)
+" MODIFIED: 2009-10-29
+" VERSION:  0.4, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -52,15 +54,11 @@ syn keyword Keyword select count max show table status like as from left right o
 syn case match
 
 " Typical Prompt
-syn match ConquePrompt '^.*\$' oneline
-syn match ConqueWait "^\.\.\.$" oneline
-syn region ConqueString start=+'+ end=+'+ skip=+\\'+  oneline
-syn region ConqueString start=+"+ end=+"+ skip=+\\"+  oneline
-syn region ConqueString start=+`+ end=+`+ skip=+\\`+ oneline
-
+"syn match ConquePrompt '^.*\$' oneline
+syn region ConqueString start=+'+ end=+'+ skip=+\\'+ contains=all oneline
+syn region ConqueString start=+"+ end=+"+ skip=+\\"+ contains=all oneline
+syn region ConqueString start=+`+ end=+`+ skip=+\\`+ contains=all oneline
 hi def link ConqueString String
-hi def link ConquePrompt Identifier
-hi def link ConqueWait Ignore
 
 hi def link MySQLPrompt Identifier
 hi def link MySQLTableHead Title

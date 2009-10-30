@@ -1,7 +1,9 @@
 " FILE:     plugin/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-13
-" VERSION:  0.3, for Vim 7.0
+"           Shougo Matsushita <Shougo.Matsu@gmail.com> (original VimShell)
+"           Yukihiro Nakadaira (vimproc)
+" MODIFIED: 2009-10-29
+" VERSION:  0.4, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -33,11 +35,6 @@ endif
 
 " Configuration globals {{{
 """"""""""""""""""""""""""""""""""""""""""
-" Use '...' filler characters while waiting for output
-" Using the filler functionality will prevent commands from piling up while you wait, but it diverges from typical shell behavior
-if !exists('g:Conque_Use_Filler')
-    let g:Conque_Use_Filler  = 1
-endif
 " Default read timeout for running a command, in seconds.
 " Decreasing this value will make Conque seem more responsive, but you will get more '...' read timeouts
 if !exists('g:Conque_Read_Timeout')
@@ -46,15 +43,15 @@ endif
 " Default read timeout for tab completion
 " Since tab completion is typically nearly instant, this value can be very, very small before timeouts occur
 if !exists('g:Conque_Tab_Timeout')
-    let g:Conque_Tab_Timeout = 3
+    let g:Conque_Tab_Timeout = 6
 endif
 " Syntax for your buffer
 if !exists('g:Conque_Syntax')
     let g:Conque_Syntax = 'conque'
 endif
-" Enable command folding
-if !exists('g:Conque_Folding')
-    let g:Conque_Folding = 0 
+" TERM environment setting
+if !exists('g:Conque_TERM')
+    let g:Conque_TERM =  'dumb'
 endif
 """"""""""""""""""""""""""""""""""""""""""
 " }}}
@@ -64,5 +61,6 @@ command! -nargs=+ -complete=shellcmd ConqueSplit call conque#open(<q-args>, ['sp
 command! -nargs=+ -complete=shellcmd ConqueVSplit call conque#open(<q-args>, ['vsplit'])
 
 let g:Loaded_Conque = 1
+let g:Conque_Idx = 1
 
 " vim: foldmethod=marker

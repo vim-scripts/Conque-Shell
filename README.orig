@@ -1,7 +1,10 @@
 
 Conque - Interactive shell buffer for Vim
 
-version: 0.3
+author: nico raffo <nicoraffo@gmail.com>
+modified: 2009-10-29
+version: 0.4
+info: http://code.google.com/p/conque/
 
 == REQUIREMENTS ==
 
@@ -23,32 +26,38 @@ $HOME/.vim/autoload/subprocess/proc_py.vim
 Type :Conque <command> to run your command in vim, for example:
 
 :Conque bash
+:Conque mysql -h localhost -u joe -p sock_collection
+:Conque ipython
 
 To open Conque in a new horizontal or vertical buffer use:
 
 :ConqueSplit <command>
-or
 :ConqueVSplit <command>
+
+Use insert mode to send commands to the shell. Use the <Tab> key to get more output from the shell. Conque is set to only a 40 milisecond timeout by default, so you will likely need to use the <Tab> key frequently.
 
 == CONFIG OPTIONS ==
 
 The following options can be added to your .vimrc file. (Defaults shown below)
 
-" Use '...' filler characters while waiting for a response. Prevents sending extra <CR>'s to the terminal, although in some cases that may be desirable.
-" 1 = on, 0 = off
-let g:Conque_Use_Filler  = 1
-
 " Return prompt to user after this many miliseconds without any new output from the terminal. 
-" Increasing this value will cause fewer '...' read timeouts, but will also make the terminal appear less responsive.
+" Increasing this value will cause fewer read timeouts, but will also make the terminal appear less responsive.
 let g:Conque_Read_Timeout = 40
 
 " Use this syntax type with Conque. The default is relatively stripped down, although it does provide good MySQL highlighting
 let g:Conque_Syntax = 'conque'
 
-" Allow commands plus their output to be folded. If the commands you run produce large amounts of output, folding
-" them can make the terminal more readable. Very experimental. 1 = on, 0 = off
-let g:Conque_Folding = 0 
+" Terminal identification
+" Leaving this value as "dumb" may make the terminal slightly faster. 
+" Setting it to "xterm" will enable more features.
+let g:Conque_TERM = 'dumb'
 
+== KNOWN ISSUES ==
+
+ * Conque does not continuously poll your program for new output. If you are expecting more output but nothing is happening, press <Tab> to get more.
+ * Tab completion and history navigation may start to break down when your command is longer than the width of the screen. Setting g:Conque_TERM = 'xterm' in your .vimrc will usually correct this issue.
+ * Most complex, full-screen applications will not work in Conque. You will not be able to launch programs such as alpine using Conque.
+ * Some Ubuntu users have been able to load Conque on the terminal Vim, but not using graphical GVim. Two Ubuntu and one Kubuntu install later I haven't been able to reproduce this. If it happens to you, please send me an email with your :version output and operating system version.
 
 == TROUBLESHOOTING ==
 
@@ -68,7 +77,16 @@ Most installations of Vim 7+ these days come built with Python.
 
 == CHANGELOG ==
 
- - 0.3 / 2009-10-13 -
+ - 0.4 / 2009-10-29
+    * Improved history and tab completion
+    * Fix escape sequence formatting and improve highlighting
+    * Send selected text to shell from any buffer
+    * Add special handling of "vi" and "man" commands
+    * Improve error handling
+    * Add key mappings for <C-p> <C-n> <C-l> <C-j>
+    * Various bugfixes
+
+ - 0.3 / 2009-10-13
     * Apply escape sequence coloring to output, e.g. ls --color
     * Clean up syntax files for portability
     * Fix several Vim 7.1 bugs

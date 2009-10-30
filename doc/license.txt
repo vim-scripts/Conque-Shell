@@ -1,4 +1,4 @@
-Conque
+
 Copyright (c) Nico Raffo <nicoraffo@gmail.com>
 
 MIT License

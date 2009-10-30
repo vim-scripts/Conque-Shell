@@ -1,7 +1,7 @@
 " FILE:     autoload/subprocess/proc_py.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-13
-" VERSION:  0.3, for Vim 7.0
+" MODIFIED: 2009-10-29
+" VERSION:  0.4, for Vim 7.0
 " LICENSE:  MIT License "{{{
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal
@@ -34,10 +34,17 @@ endfunction "}}}
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " API methods
 
-function! s:lib.open(command) "{{{
+function! s:lib.open(...) "{{{
+    let command = get(a:000, 0, '')
+    let env = get(a:000, 1, {})
+    let env_string = '{'
+    for k in keys(env)
+        let env_string = env_string . "'" . s:python_escape(k) . "':'" . s:python_escape(env[k]) . "',"
+    endfor
+    let env_string = substitute(env_string, ',$', '', '') . '}'
     let b:subprocess_id = 'b' . string(localtime())
     execute ":python proc".b:subprocess_id." = proc_py()"
-    execute ":python proc".b:subprocess_id.".open('" . s:python_escape(a:command) . "')"
+    execute ":python proc".b:subprocess_id.".open('" . s:python_escape(command) . "', " . env_string . ")"
 endfunction "}}}
 
 function! s:lib.read(...) "{{{
@@ -89,6 +96,12 @@ function! s:lib.get_library_name() "{{{
     return b:proc_py_lib
 endfunction "}}}
 
+function! s:lib.get_env_var(var_name) "{{{
+    let b:proc_py_env = ''
+    execute ":python proc".b:subprocess_id.".get_env_var('" . s:python_escape(a:var_name) . "')"
+    return b:proc_py_env
+endfunction "}}}
+
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Util
 
@@ -133,7 +146,7 @@ class proc_py:
         # }}}
 
     # create the pty or whatever (whatever == windows)
-    def open(self, command): # {{{
+    def open(self, command, env = {}): # {{{
         command_arr  = command.split()
         self.command = command_arr[0]
         self.args    = command_arr
@@ -143,26 +156,29 @@ class proc_py:
 
             try:
                 self.pid, self.fd = pty.fork()
+                #print self.pid
             except:
                 print "pty.fork() failed. Did you mean pty.spork() ???"
 
             # child proc, replace with command after fucking with terminal attributes
             if self.pid == 0:
 
-                os.environ['TERM'] = 'dumb'
-                os.environ['CONQUE'] = '1'
-                #os.environ['COLUMNS'] = w.width
-                #os.environ['LINES'] = w.height
+                # set requested environment variables
+                for env_attr in env:
+                    os.environ[env_attr] = env[env_attr]
 
                 # set some attributes
-                attrs = tty.tcgetattr(1)
-                attrs[0] = attrs[0] ^ tty.IGNBRK
-                attrs[0] = attrs[0] | tty.BRKINT | tty.IXANY | tty.IMAXBEL
-                attrs[2] = attrs[2] | tty.HUPCL
-                attrs[3] = attrs[3] | tty.ICANON | tty.ECHO | tty.ISIG | tty.ECHOKE
-                attrs[6][tty.VMIN]  = 1
-                attrs[6][tty.VTIME] = 0
-                tty.tcsetattr(1, tty.TCSANOW, attrs)
+                try:
+                    attrs = tty.tcgetattr(1)
+                    attrs[0] = attrs[0] ^ tty.IGNBRK
+                    attrs[0] = attrs[0] | tty.BRKINT | tty.IXANY | tty.IMAXBEL
+                    attrs[2] = attrs[2] | tty.HUPCL
+                    attrs[3] = attrs[3] | tty.ICANON | tty.ECHO | tty.ISIG | tty.ECHOKE
+                    attrs[6][tty.VMIN]  = 1
+                    attrs[6][tty.VTIME] = 0
+                    tty.tcsetattr(1, tty.TCSANOW, attrs)
+                except:
+                    pass
 
                 os.execvp(self.command, self.args)
 
@@ -181,7 +197,7 @@ class proc_py:
                     self.susp_key  = termios_keys[ tty.VSUSP ]
 
                 except:
-                    print  'setup_pty: tcgetattr failed. I guess <C-c> will have to work for you' 
+                    pass
 
         # no pty, dagnabit
         else:
@@ -218,9 +234,13 @@ class proc_py:
 
                 lines = ''
                 for s_fd in s_read:
-                    lines = os.read( self.fd, 32 )
+                    try:
+                        lines = os.read( self.fd, 32 )
+                    except:
+                        pass
                     output = output + lines
 
+                #self.buffer.append(str(output))
                 if lines == '':
                     break
 
@@ -324,6 +344,21 @@ class proc_py:
         vim.command(command)
         # }}}
 
+
+    # XXX - ew
+    def get_env_var(self, var_name): #{{{
+        env_val = ''
+        try:
+            from ctypes import CDLL, c_char_p
+            getenv = CDLL("libc.so.6").getenv
+            getenv.restype = c_char_p
+            env_val = getenv(var_name)
+        except:
+            env_val = os.environ[var_name]
+
+        command = 'let b:proc_py_env = "' + env_val + '"'
+        vim.command(command)
+        # }}}
 
 
 
