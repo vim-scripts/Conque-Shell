@@ -1,9 +1,7 @@
 " FILE:     autoload/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-"           Shougo Matsushita <Shougo.Matsu@gmail.com> (original VimShell)
-"           Yukihiro Nakadaira (vimproc)
-" MODIFIED: 2009-10-29
-" VERSION:  0.4, for Vim 7.0
+" MODIFIED: 2009-12-01
+" VERSION:  0.5, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -73,6 +71,7 @@ function! conque#open(...) "{{{
 
     " init variables.
     let b:prompt_history = {}
+    let b:auto_wrapped = 0
     let b:current_command = ''
     let b:write_clear = 0
 
@@ -94,10 +93,10 @@ endfunction "}}}
 function! s:set_buffer_settings(command, pre_hooks) "{{{
     " optional hooks to execute, e.g. 'split'
     for h in a:pre_hooks
-        execute h
+        silent execute h
     endfor
 
-    execute "edit " . substitute(a:command, ' ', '\\ ', 'g') . "\\ -\\ " . g:Conque_Idx
+    silent execute "edit " . substitute(a:command, ' ', '\\ ', 'g') . "\\ -\\ " . g:Conque_Idx
     setlocal buftype=nofile  " this buffer is not a file, you can't save it
     setlocal nonumber        " hide line numbers
     setlocal foldcolumn=0    " reasonable left margin
@@ -105,7 +104,7 @@ function! s:set_buffer_settings(command, pre_hooks) "{{{
     setlocal noswapfile      " don't bother creating a .swp file
     set scrolloff=0          " don't use buffer lines. it makes the 'clear' command not work as expected
     setfiletype conque       " useful
-    execute "setlocal syntax=".g:Conque_Syntax
+    silent execute "setlocal syntax=".g:Conque_Syntax
     setlocal foldmethod=manual
 
     " run the current command
@@ -157,6 +156,12 @@ endfunction "}}}
 function! conque#run() "{{{
 
 
+
+    " if we are not at the current active command line, don't execute
+    if line('.') < max(keys(b:prompt_history)) && line('.') != line('$')
+        execute "normal j^"
+        return
+    endif
 
     " check if subprocess still exists
     if !exists('b:subprocess')
@@ -216,7 +221,13 @@ function! conque#write(add_newline) "{{{
     " record command history
     let b:current_command = l:in
 
-    normal! G$
+    " clear out our command
+    if exists("b:prompt_history['".line('.')."']")
+
+        call setline(line('.'), b:prompt_history[line('.')])
+    endif
+
+    normal! $
 
 
     return 1
@@ -240,55 +251,71 @@ endfunction "}}}
 " also manages multi-line commands.
 function! s:get_command() "{{{
 
-  let l:in = getline('.')
+    let l:in = getline('.')
 
-  if l:in == ''
-    " Do nothing.
+    if l:in == ''
+        " Do nothing.
 
-  elseif exists("b:prompt_history['".line('.')."']")
-    let l:in = l:in[len(b:prompt_history[line('.')]) : ]
+    elseif exists("b:prompt_history['".line('.')."']")
 
-  else
-    " Maybe line numbering got disrupted, search for a matching prompt.
-    let l:prompt_search = 0
-    for pnr in reverse(sort(keys(b:prompt_history)))
-      let l:prompt_length = len(b:prompt_history[pnr])
-      " In theory 0 length or ' ' prompt shouldn't exist, but still...
-      if l:prompt_length > 0 && b:prompt_history[pnr] != ' '
-        " Does the current line have this prompt?
-        if l:in[0 : l:prompt_length - 1] == b:prompt_history[pnr]
-          let l:in = l:in[l:prompt_length : ]
-          let l:prompt_search = pnr
+        let l:in = l:in[len(b:prompt_history[line('.')]) : ]
+
+    else
+        " Maybe line numbering got disrupted, search for a matching prompt.
+        let l:prompt_search = 0
+        if line('.') == line('$')
+            for pnr in reverse(sort(keys(b:prompt_history)))
+                let l:prompt_length = len(b:prompt_history[pnr])
+                " In theory 0 length or ' ' prompt shouldn't exist, but still...
+                if l:prompt_length > 0 && b:prompt_history[pnr] != ' '
+                    " Does the current line have this prompt?
+                    if l:in[0 : l:prompt_length - 1] == b:prompt_history[pnr]
+                        " found a matching prompt in history 
+
+                        let b:prompt_history[line('.')] = b:prompt_history[pnr]
+                        let l:in = l:in[l:prompt_length : ]
+                        let l:prompt_search = pnr
+                    endif
+                endif
+            endfor
         endif
-      endif
-    endfor
 
-    " Still nothing? Maybe a multi-line command was pasted in.
-    let l:max_prompt = max(keys(b:prompt_history)) " Only count once.
-    if l:prompt_search == 0 && l:max_prompt < line('$')
-    for i in range(l:max_prompt, line('$'))
-      if i == l:max_prompt
-        let l:in = getline(i)
-        let l:in = l:in[len(b:prompt_history[i]) : ]
-      else
-        let l:in = l:in . "\n" . getline(i)
-      endif
-    endfor
-      let l:prompt_search = l:max_prompt
+        " Still nothing? Maybe a multi-line command was pasted in.
+        let l:max_prompt = max(keys(b:prompt_history)) " Only count once.
+        if l:prompt_search == 0 && l:max_prompt < line('$')
+
+            for i in range(l:max_prompt, line('$'))
+                if i == l:max_prompt
+                    let l:in = getline(i)
+                    let l:in = l:in[len(b:prompt_history[i]) : ]
+                else
+
+                    " detect if multi-line command was a product of command editing functions
+                    if b:auto_wrapped == 1
+                        let l:in = l:in . getline(i)
+                    else
+                        let l:in = l:in . "\n" . getline(i)
+                    endif
+                endif
+            endfor
+            call cursor(l:max_prompt, len(b:prompt_history[l:max_prompt]))
+            let l:prompt_search = l:max_prompt
+
+            " delete extra lines
+            execute (l:prompt_search + 1) . ',' . line('$') . 'd'
+        endif
+
+        " Still nothing? We give up.
+        if l:prompt_search == 0
+
+            echohl WarningMsg | echo "Invalid input." | echohl None
+            startinsert!
+            return
+        endif
     endif
 
-    " Still nothing? We give up.
-    if l:prompt_search == 0
 
-      echohl WarningMsg | echo "Invalid input." | echohl None
-      normal! G$
-      startinsert!
-      return
-    endif
-  endif
-
-
-  return l:in
+    return l:in
 endfunction "}}}
 
 " read from pty and write to buffer
@@ -314,9 +341,6 @@ function! conque#read(timeout) "{{{
     endif
 
 
-
-    " ready to insert now
-    normal! G$
 
     " record prompt used on this line
     let b:prompt_history[line('.')] = getline('.')
@@ -349,31 +373,8 @@ endfunction "}}}
 " parse output from pty and update buffer
 function! s:print_buffer(read_lines) "{{{
 
-    " clear out our command
-    if exists("b:prompt_history['".line('$')."']")
 
-        call setline(line('$'), b:prompt_history[line('$')])
-    endif
-
-    " maybe put this in config later
-    let l:pos = 1
-    for eline in a:read_lines
-        " write to buffer
-
-        if l:pos == 1
-            "let eline = substitute(eline, '^\b\+', '', 'g')
-            call setline(line('$'), getline(line('$')) . eline)
-        else
-            call append(line('$'), eline)
-        endif
-
-        " translate terminal escape sequences
-        normal! G$
-        call subprocess#shell_translate#process_current_line()
-
-        let l:pos += 1
-        normal G
-    endfor
+    call subprocess#shell_translate#process_input(line('.'), len(getline('.')) + 1, a:read_lines, 0)
 
     redraw
 
@@ -458,7 +459,9 @@ endfunction "}}}
 
 " process command editing key strokes. History and tab completion being the most common.
 function! s:process_command_edit(char) "{{{
-    let l:prompt = b:prompt_history[line('$')]
+
+    let l:prompt_line = max(keys(b:prompt_history))
+    let l:prompt = b:prompt_history[l:prompt_line]
     let l:working_line = getline('.')
     let l:working_command = l:working_line[len(l:prompt) : len(l:working_line)]
 
@@ -467,35 +470,26 @@ function! s:process_command_edit(char) "{{{
     elseif b:write_clear == 0
 
         call b:subprocess.write(l:working_command . a:char)
-        call setline(line('$'), l:prompt)
+        call setline(line('.'), l:prompt)
     elseif l:working_command[0 : len(b:edit_command) - 1] == b:edit_command
 
         call b:subprocess.write(l:working_command[len(b:edit_command) : ] . a:char)
-        call setline(line('$'), l:prompt . b:edit_command)
+        call setline(line('.'), l:prompt . b:edit_command)
     else
 
 
         call b:subprocess.write("\<C-u>" . l:working_command . a:char)
-        call setline(line('$'), l:prompt . b:edit_command)
+        call setline(line('.'), l:prompt . b:edit_command)
     endif
     let l:resp = conque#read_return_raw(g:Conque_Tab_Timeout)
 
 
-    for i in range(0, len(l:resp) - 1)
-
-        if i > 0
-            call setline(line('.') + 1, getline(line('.') + 1) . l:resp[i])
-            normal! j
-        else
-            call setline(line('.'), getline(line('.')) . l:resp[i])
-        endif
-        call subprocess#shell_translate#process_current_line()
-    endfor
+    call subprocess#shell_translate#process_input(line('.'), len(getline('.')) + 1, l:resp, 1)
 
 
 
 
-    let b:prompt_history[line('$')] = l:prompt
+    "let b:prompt_history[l:prompt_line] = l:prompt
 
     let l:working_line = getline('.')
     let b:edit_command = l:working_line[len(l:prompt) : ]
@@ -559,9 +553,15 @@ function! conque#kill_line() "{{{
     let l:hopefully_just_backspaces = conque#read_return_raw(g:Conque_Tab_Timeout)
 
     " restore empty prompt
-    call setline(line('.'), b:prompt_history[max(keys(b:prompt_history))])
-    normal! G$
-    startinsert!
+    let l:max_prompt = max(keys(b:prompt_history))
+    call setline(l:max_prompt, b:prompt_history[l:max_prompt])
+    if line('$') > l:max_prompt
+        for i in range(l:max_prompt + 1, line('$'))
+            call setline(i, '')
+        endfor
+    endif
+    "normal! G$
+    "startinsert!
 endfunction "}}}
 
 " implement <C-c>
@@ -658,13 +658,13 @@ function! conque#special(command) "{{{
     if a:command =~ '^man '
         let split_cmd = "split " . substitute(a:command, '\W', '_', 'g')
 
-        execute split_cmd
+        silent execute split_cmd
         setlocal buftype=nofile
         setlocal nonumber
         setlocal noswapfile
         let cmd = 'read !' . substitute(a:command, '^man ', 'man -P cat ', '')
 
-        execute cmd
+        silent execute cmd
 
         " strip backspaces out of output
         try
@@ -680,7 +680,7 @@ function! conque#special(command) "{{{
         let filename = b:subprocess.get_env_var('PWD') . '/' . filename
         let split_cmd = "split " . filename
 
-        execute split_cmd
+        silent execute split_cmd
     endif
 endfunction "}}}
 
@@ -694,7 +694,7 @@ function! conque#inject(type, execute) "{{{
     let @@ = substitute(@@, '^[\r\n]*', '', '')
     let @@ = substitute(@@, '[\r\n]*$', '', '')
 
-    execute ":sb " . g:Conque_BufName
+    silent execute ":sb " . g:Conque_BufName
     normal! G$p
     normal! G$
     startinsert!

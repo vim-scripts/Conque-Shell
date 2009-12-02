@@ -1,7 +1,7 @@
 " FILE:     autoload/subprocess.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-29
-" VERSION:  0.4, for Vim 7.0
+" MODIFIED: 2009-12-01
+" VERSION:  0.5, for Vim 7.0
 " LICENSE:  MIT License "{{{
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal

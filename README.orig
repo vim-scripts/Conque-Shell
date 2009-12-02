@@ -2,8 +2,8 @@
 Conque - Interactive shell buffer for Vim
 
 author: nico raffo <nicoraffo@gmail.com>
-modified: 2009-10-29
-version: 0.4
+modified: 2009-12-01
+version: 0.5
 info: http://code.google.com/p/conque/
 
 == REQUIREMENTS ==
@@ -20,6 +20,7 @@ $HOME/.vim/syntax/conque.vim
 $HOME/.vim/autoload/conque.vim
 $HOME/.vim/autoload/subprocess.vim
 $HOME/.vim/autoload/subprocess/proc_py.vim
+$HOME/.vim/autoload/subprocess/shell_translate.vim
 
 == USAGE ==
 
@@ -34,7 +35,7 @@ To open Conque in a new horizontal or vertical buffer use:
 :ConqueSplit <command>
 :ConqueVSplit <command>
 
-Use insert mode to send commands to the shell. Use the <Tab> key to get more output from the shell. Conque is set to only a 40 milisecond timeout by default, so you will likely need to use the <Tab> key frequently.
+Use insert mode to send commands to the shell. Use the <Tab> key to get more output from the shell. Conque is set to a 40 milisecond timeout by default, so you will likely need to use the <Tab> key frequently.
 
 == CONFIG OPTIONS ==
 
@@ -48,15 +49,15 @@ let g:Conque_Read_Timeout = 40
 let g:Conque_Syntax = 'conque'
 
 " Terminal identification
-" Leaving this value as "dumb" may make the terminal slightly faster. 
+" Leaving this value as "dumb" will cause the fewest formatting errors, and may make the terminal slightly faster. 
 " Setting it to "xterm" will enable more features.
 let g:Conque_TERM = 'dumb'
 
 == KNOWN ISSUES ==
 
- * Conque does not continuously poll your program for new output. If you are expecting more output but nothing is happening, press <Tab> to get more.
- * Tab completion and history navigation may start to break down when your command is longer than the width of the screen. Setting g:Conque_TERM = 'xterm' in your .vimrc will usually correct this issue.
  * Most complex, full-screen applications will not work in Conque. You will not be able to launch programs such as alpine using Conque.
+ * Conque does not continuously poll your program for new output. If you are expecting more output but nothing is happening, press <Tab> to get more.
+ * Tab completion and history navigation may start to break down when your command is longer than the width of the screen. This will get fixed in a future version. Tab completion is generally squirrely in zsh for some reason, and it may require you to use TERM=xterm in (t)csh.
  * Some Ubuntu users have been able to load Conque on the terminal Vim, but not using graphical GVim. Two Ubuntu and one Kubuntu install later I haven't been able to reproduce this. If it happens to you, please send me an email with your :version output and operating system version.
 
 == TROUBLESHOOTING ==
@@ -77,6 +78,10 @@ Most installations of Vim 7+ these days come built with Python.
 
 == CHANGELOG ==
 
+ -0.5 / 2009-12-01
+    * rewritten, faster escape sequece proecessing
+    * bugfixes
+
  - 0.4 / 2009-10-29
     * Improved history and tab completion
     * Fix escape sequence formatting and improve highlighting
@@ -86,7 +91,7 @@ Most installations of Vim 7+ these days come built with Python.
     * Add key mappings for <C-p> <C-n> <C-l> <C-j>
     * Various bugfixes
 
- - 0.3 / 2009-10-13
+ - 0.3 / 2009-10-13 -
     * Apply escape sequence coloring to output, e.g. ls --color
     * Clean up syntax files for portability
     * Fix several Vim 7.1 bugs

@@ -1,7 +1,7 @@
 " FILE:     autoload/subprocess/proc_py.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-10-29
-" VERSION:  0.4, for Vim 7.0
+" MODIFIED: 2009-12-01
+" VERSION:  0.5, for Vim 7.0
 " LICENSE:  MIT License "{{{
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal
@@ -43,62 +43,62 @@ function! s:lib.open(...) "{{{
     endfor
     let env_string = substitute(env_string, ',$', '', '') . '}'
     let b:subprocess_id = 'b' . string(localtime())
-    execute ":python proc".b:subprocess_id." = proc_py()"
-    execute ":python proc".b:subprocess_id.".open('" . s:python_escape(command) . "', " . env_string . ")"
+    silent execute ":python proc".b:subprocess_id." = proc_py()"
+    silent execute ":python proc".b:subprocess_id.".open('" . s:python_escape(command) . "', " . env_string . ")"
 endfunction "}}}
 
 function! s:lib.read(...) "{{{
     let timeout = get(a:000, 0, 0.2)
     let b:proc_py_output = []
-    execute ":python proc".b:subprocess_id.".read(" . string(timeout) . ")"
+    silent execute ":python proc".b:subprocess_id.".read(" . string(timeout) . ")"
     return b:proc_py_output
 endfunction "}}}
 
 function! s:lib.write(command) "{{{
-    execute ":python proc".b:subprocess_id.".write('" . s:python_escape(a:command) . "')"
+    silent execute ":python proc".b:subprocess_id.".write('" . s:python_escape(a:command) . "')"
 endfunction "}}}
 
 " Try to close process gracefully
 " Linux signal 15, Windows close()
 function! s:lib.close() "{{{
-    execute ":python proc".b:subprocess_id.".close()"
+    silent execute ":python proc".b:subprocess_id.".close()"
 endfunction "}}}
 
 " Close process forcefully
 " Linux signal 9, Windows close()
 function! s:lib.kill() "{{{
-    execute ":python proc".b:subprocess_id.".kill()"
+    silent execute ":python proc".b:subprocess_id.".kill()"
 endfunction "}}}
 
 " Abandon process
 " Linux signal 1, Windows close()
 function! s:lib.hang_up() "{{{
-    execute ":python proc".b:subprocess_id.".hang_up()"
+    silent execute ":python proc".b:subprocess_id.".hang_up()"
 endfunction "}}}
 
 " Send an interrupt to process
 " Typically <C-c>
 function! s:lib.interrupt() "{{{
-    execute ":python proc".b:subprocess_id.".interrupt()"
+    silent execute ":python proc".b:subprocess_id.".interrupt()"
 endfunction "}}}
 
 " Am I alive?
 function! s:lib.get_status() "{{{
     let b:proc_py_status = 1
-    execute ":python proc".b:subprocess_id.".get_status()"
+    silent execute ":python proc".b:subprocess_id.".get_status()"
     return b:proc_py_status
 endfunction "}}}
 
 " what library am I using to run the subprocess
 function! s:lib.get_library_name() "{{{
     let b:proc_py_lib = 'unknown'
-    execute ":python proc".b:subprocess_id.".get_library_name()"
+    silent execute ":python proc".b:subprocess_id.".get_library_name()"
     return b:proc_py_lib
 endfunction "}}}
 
 function! s:lib.get_env_var(var_name) "{{{
     let b:proc_py_env = ''
-    execute ":python proc".b:subprocess_id.".get_env_var('" . s:python_escape(a:var_name) . "')"
+    silent execute ":python proc".b:subprocess_id.".get_env_var('" . s:python_escape(a:var_name) . "')"
     return b:proc_py_env
 endfunction "}}}
 
