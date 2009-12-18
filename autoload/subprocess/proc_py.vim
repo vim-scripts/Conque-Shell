@@ -1,7 +1,7 @@
 " FILE:     autoload/subprocess/proc_py.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-12-01
-" VERSION:  0.5, for Vim 7.0
+" MODIFIED: 2009-12-17
+" VERSION:  0.6, for Vim 7.0
 " LICENSE:  MIT License "{{{
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal
@@ -48,7 +48,7 @@ function! s:lib.open(...) "{{{
 endfunction "}}}
 
 function! s:lib.read(...) "{{{
-    let timeout = get(a:000, 0, 0.2)
+    let timeout = get(a:000, 0, '0.2')
     let b:proc_py_output = []
     silent execute ":python proc".b:subprocess_id.".read(" . string(timeout) . ")"
     return b:proc_py_output
@@ -80,6 +80,11 @@ endfunction "}}}
 " Typically <C-c>
 function! s:lib.interrupt() "{{{
     silent execute ":python proc".b:subprocess_id.".interrupt()"
+endfunction "}}}
+
+" Update window size in kernel
+function! s:lib.update_window_size(lines, cols) "{{{
+    silent execute ":python proc" . b:subprocess_id . ".update_window_size(" . a:lines . "," . a:cols . ")"
 endfunction "}}}
 
 " Am I alive?
@@ -133,7 +138,7 @@ if sys.platform == 'win32' or sys.platform == 'win64':
     import popen2, stat
     use_pty = 0
 else:
-    import pty, tty, select
+    import pty, tty, select, fcntl, termios, struct
     use_pty = 1
 
 
@@ -347,17 +352,29 @@ class proc_py:
 
     # XXX - ew
     def get_env_var(self, var_name): #{{{
-        env_val = ''
-        try:
-            from ctypes import CDLL, c_char_p
-            getenv = CDLL("libc.so.6").getenv
-            getenv.restype = c_char_p
-            env_val = getenv(var_name)
-        except:
-            env_val = os.environ[var_name]
+        #env_val = ''
+        #try:
+        #    from ctypes import CDLL, c_char_p
+        #    getenv = CDLL("libc.so.6").getenv
+        #    getenv.restype = c_char_p
+        #    env_val = getenv(var_name)
+        #except:
+        env_val = os.environ[var_name]
 
         command = 'let b:proc_py_env = "' + env_val + '"'
         vim.command(command)
+        # }}}
+
+
+    # update window size in kernel, then send SIGWINCH to fg process
+    def update_window_size(self, rows, cols): # {{{
+        if use_pty:
+            try:
+                fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+                os.kill(self.pid, signal.SIGWINCH)
+            except:
+                pass
+
         # }}}
 
 

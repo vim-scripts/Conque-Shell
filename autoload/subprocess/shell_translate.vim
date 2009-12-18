@@ -1,7 +1,7 @@
 " FILE:     autoload/subprocess/shell_translate.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-12-01
-" VERSION:  0.5, for Vim 7.0
+" MODIFIED: 2009-12-17
+" VERSION:  0.6, for Vim 7.0
 " LICENSE:  MIT License "{{{
 " Permission is hereby granted, free of charge, to any person obtaining a copy
 " of this software and associated documentation files (the "Software"), to deal
@@ -451,6 +451,7 @@ function! s:process_colors(color_changes) " {{{
         let l:hi_ct += 1
     endfor
 endfunction " }}}
+
 
 
 " vim: foldmethod=marker

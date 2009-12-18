@@ -1,7 +1,9 @@
 " FILE:     autoload/conque.vim
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2009-12-01
-" VERSION:  0.5, for Vim 7.0
+"           Shougo Matsushita <Shougo.Matsu@gmail.com> (original VimShell)
+"           Yukihiro Nakadaira (vimproc)
+" MODIFIED: 2009-12-17
+" VERSION:  0.6, for Vim 7.0
 " LICENSE: {{{
 " Conque - pty interaction in Vim
 " Copyright (C) 2009 Nico Raffo 
@@ -711,5 +713,6 @@ function! conque#send(command) "{{{
     call setline(line('$'), getline(line('$')) . a:command)
     call conque#run()
 endfunction "}}}
+
 
 " vim: foldmethod=marker

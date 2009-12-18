@@ -2,8 +2,8 @@
 Conque - Interactive shell buffer for Vim
 
 author: nico raffo <nicoraffo@gmail.com>
-modified: 2009-12-01
-version: 0.5
+modified: 2009-12-17
+version: 0.6
 info: http://code.google.com/p/conque/
 
 == REQUIREMENTS ==
@@ -20,7 +20,6 @@ $HOME/.vim/syntax/conque.vim
 $HOME/.vim/autoload/conque.vim
 $HOME/.vim/autoload/subprocess.vim
 $HOME/.vim/autoload/subprocess/proc_py.vim
-$HOME/.vim/autoload/subprocess/shell_translate.vim
 
 == USAGE ==
 
@@ -78,11 +77,7 @@ Most installations of Vim 7+ these days come built with Python.
 
 == CHANGELOG ==
 
- -0.5 / 2009-12-01
-    * rewritten, faster escape sequece proecessing
-    * bugfixes
-
- - 0.4 / 2009-10-29
+ - 0.4 / 2009-10-
     * Improved history and tab completion
     * Fix escape sequence formatting and improve highlighting
     * Send selected text to shell from any buffer
