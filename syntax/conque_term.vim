@@ -8,16 +8,14 @@ syn match MySQLTableBody "^ *|.*| *$" nextgroup=MySQLTableBody,MySQLTableEnd con
 syn match MySQLTableEnd "^ *+[+=-]\++ *$" oneline 
 syn match MySQLTableDivide "^ *+[+=-]\++ *$" nextgroup=MySQLTableBody oneline skipwhite skipnl
 syn match MySQLTableStart "^ *+[+=-]\++ *$" nextgroup=MySQLTableHead oneline skipwhite skipnl
-syn match MySQLTableBar "|" contained
-syn match MySQLNull " NULL " contained
-syn match MySQLBool " YES " contained
-syn match MySQLBool " NO " contained
+syn match MySQLNull " NULL " contained contains=MySQLTableBar
 syn match MySQLStorageClass " PRI " contained
 syn match MySQLStorageClass " MUL " contained
 syn match MySQLStorageClass " UNI " contained
 syn match MySQLStorageClass " CURRENT_TIMESTAMP " contained
 syn match MySQLStorageClass " auto_increment " contained
-syn match MySQLNumber " \d\+ " contained
+syn match MySQLTableBar "|" contained
+syn match MySQLNumber "|\? *\d\+ *|" contained contains=MySQLTableBar
 syn match MySQLQueryStat "^\d\+ rows\? in set.*" oneline
 syn match MySQLPromptLine "^.\?mysql> .*$" contains=MySQLKeyword,MySQLPrompt,MySQLString oneline
 syn match MySQLPromptLine "^    -> .*$" contains=MySQLKeyword,MySQLPrompt,MySQLString oneline

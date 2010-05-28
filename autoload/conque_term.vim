@@ -1,7 +1,8 @@
 " FILE:     plugin/conque_term.vim {{{
+"
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2010-02-02
-" VERSION:  1.0, for Vim 7.0
+" MODIFIED: 2010-05-27
+" VERSION:  1.1, for Vim 7.0
 " LICENSE:
 " Conque - pty interaction in Vim
 " Copyright (C) 2009-2010 Nico Raffo 
@@ -27,6 +28,7 @@
 " THE SOFTWARE.
 " }}}
 
+
 " **********************************************************************************************************
 " **** VIM FUNCTIONS ***************************************************************************************
 " **********************************************************************************************************
@@ -37,19 +39,23 @@ function! conque_term#open(...) "{{{
     let hooks   = get(a:000, 1, [])
 
     " bare minimum validation
+    if has('python') != 1
+        echohl WarningMsg | echomsg "Conque requires the Python interface to be installed" | echohl None
+        return 0
+    endif
     if empty(command)
         echohl WarningMsg | echomsg "No command found" | echohl None
         return 0
     else
         let l:cargs = split(command, '\s')
         if !executable(l:cargs[0])
-            echohl WarningMsg | echomsg "Not an executable" | echohl None
+            echohl WarningMsg | echomsg "Not an executable: " . l:cargs[0] | echohl None
             return 0
         endif
     endif
 
     " set buffer window options
-    let g:Conque_BufName = substitute(command, ' ', '\\ ', 'g') . "\\ -\\ " . g:ConqueTerm_Idx
+    let g:ConqueTerm_BufName = substitute(command, ' ', '\\ ', 'g') . "\\ -\\ " . g:ConqueTerm_Idx
     call conque_term#set_buffer_settings(command, hooks)
     let b:ConqueTerm_Var = 'ConqueTerm_' . g:ConqueTerm_Idx
     let g:ConqueTerm_Var = 'ConqueTerm_' . g:ConqueTerm_Idx
@@ -66,7 +72,7 @@ function! conque_term#open(...) "{{{
     endtry
 
     " set buffer mappings and auto commands 
-    call conque_term#set_mappings()
+    call conque_term#set_mappings('start')
 
     startinsert!
     return 1
@@ -77,12 +83,13 @@ function! conque_term#set_buffer_settings(command, pre_hooks) "{{{
 
     " optional hooks to execute, e.g. 'split'
     for h in a:pre_hooks
-        silent execute h
+        sil exe h
     endfor
-    silent execute "edit " . g:Conque_BufName
+    sil exe "edit " . g:ConqueTerm_BufName
 
     " buffer settings 
     setlocal nocompatible      " conque won't work in compatible mode
+    setlocal nopaste           " conque won't work in paste mode
     setlocal buftype=nofile    " this buffer is not a file, you can't save it
     setlocal nonumber          " hide line numbers
     setlocal foldcolumn=0      " reasonable left margin
@@ -93,38 +100,73 @@ function! conque_term#set_buffer_settings(command, pre_hooks) "{{{
     setlocal sidescrolloff=0   " don't use buffer lines. it makes the 'clear' command not work as expected
     setlocal sidescroll=1      " don't use buffer lines. it makes the 'clear' command not work as expected
     setlocal foldmethod=manual " don't fold on {{{}}} and stuff
-    setlocal switchbuf=usetab  " switch tabs with the <f9> command
+    setlocal bufhidden=hide    " when buffer is no longer displayed, don't wipe it out
     setfiletype conque_term    " useful
-    silent execute "setlocal syntax=" . g:ConqueTerm_Syntax
+    sil exe "setlocal syntax=" . g:ConqueTerm_Syntax
 
 endfunction " }}}
 
 " set key mappings and auto commands
-function! conque_term#set_mappings() "{{{
+function! conque_term#set_mappings(action) "{{{
 
-    " handle unexpected closing of shell, passes HUP to parent and all child processes
-    execute 'autocmd BufUnload <buffer> python ' . b:ConqueTerm_Var . '.proc.signal(1)'
+    " set action
+    if a:action == 'toggle'
+        if exists('b:conque_on') && b:conque_on == 1
+            let l:action = 'stop'
+            echohl WarningMsg | echomsg "Terminal is paused" | echohl None
+        else
+            let l:action = 'start'
+            echohl WarningMsg | echomsg "Terminal is resumed" | echohl None
+        endif
+    else
+        let l:action = a:action
+    endif
 
-    " check for resized/scrolled buffer when entering buffer
-    execute 'autocmd BufEnter <buffer> python ' . b:ConqueTerm_Var . '.update_window_size()'
+    " if mappings are being removed, add 'un'
+    let map_modifier = 'nore'
+    if l:action == 'stop'
+        let map_modifier = 'un'
+    endif
 
-    " set/reset updatetime on entering/exiting buffer
-    autocmd BufEnter <buffer> set updatetime=50
-    autocmd BufLeave <buffer> set updatetime=1000
+    " remove all auto commands
+    if l:action == 'stop'
+        execute 'autocmd! ' . b:ConqueTerm_Var
 
-    " check for resized/scrolled buffer when entering insert mode
-    " XXX - messed up since we enter insert mode at each updatetime
-    "execute 'autocmd InsertEnter <buffer> python ' . b:ConqueTerm_Var . '.screen.align()'
+    else
+        execute 'augroup ' . b:ConqueTerm_Var
 
-    " read more output when this isn't the current buffer
-    if g:ConqueTerm_ReadUnfocused == 1
-        autocmd CursorHold * call conque_term#read_all()
+        " handle unexpected closing of shell, passes HUP to parent and all child processes
+        execute 'autocmd ' . b:ConqueTerm_Var . ' BufUnload <buffer> python ' . b:ConqueTerm_Var . '.proc.signal(1)'
+
+        " check for resized/scrolled buffer when entering buffer
+        execute 'autocmd ' . b:ConqueTerm_Var . ' BufEnter <buffer> python ' . b:ConqueTerm_Var . '.update_window_size()'
+        execute 'autocmd ' . b:ConqueTerm_Var . ' VimResized python ' . b:ConqueTerm_Var . '.update_window_size()'
+
+        " set/reset updatetime on entering/exiting buffer
+        autocmd BufEnter <buffer> set updatetime=50
+        autocmd BufLeave <buffer> set updatetime=2000
+
+        " check for resized/scrolled buffer when entering insert mode
+        " XXX - messed up since we enter insert mode at each updatetime
+        "execute 'autocmd InsertEnter <buffer> python ' . b:ConqueTerm_Var . '.screen.align()'
+
+        " read more output when this isn't the current buffer
+        if g:ConqueTerm_ReadUnfocused == 1
+            execute 'autocmd ' . b:ConqueTerm_Var . ' CursorHold * call conque_term#read_all()'
+        endif
+
+        " poll for more output
+        sil execute 'autocmd ' . b:ConqueTerm_Var . ' CursorHoldI <buffer> python ' .  b:ConqueTerm_Var . '.auto_read()'
     endif
 
     " use F22 key to get more input
-    inoremap <silent> <buffer> <expr> <F22> "\<left>\<right>"
-    inoremap <silent> <buffer> <expr> <F23> "\<right>\<left>"
-    silent execute 'autocmd CursorHoldI <buffer> python ' .  b:ConqueTerm_Var . '.auto_read()'
+    if l:action == 'start'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <expr> <F22> "\<left>\<right>"'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <expr> <F23> "\<right>\<left>"'
+    else
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <expr> <F22>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <expr> <F23>'
+    endif
 
     " map ASCII 1-31
     for c in range(1, 31)
@@ -132,82 +174,175 @@ function! conque_term#set_mappings() "{{{
         if c == 27
             continue
         endif
-        silent execute 'inoremap <silent> <buffer> <C-' . nr2char(64 + c) . '> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(' . c . '))<CR>'
+        if l:action == 'start'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <C-' . nr2char(64 + c) . '> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(' . c . '))<CR>'
+        else
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <C-' . nr2char(64 + c) . '>'
+        endif
     endfor
-    silent execute 'inoremap <silent> <buffer> <Esc><Esc> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(27))<CR>'
-    silent execute 'nnoremap <silent> <buffer> <C-c> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(3))<CR>'
+    if l:action == 'start'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> <C-c> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(3))<CR>'
+    else
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> <C-c>'
+    endif
+
+    " leave insert mode
+    if !exists('g:ConqueTerm_EscKey') || g:ConqueTerm_EscKey == '<Esc>'
+        " use <Esc><Esc> to send <Esc> to terminal
+        if l:action == 'start'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <Esc><Esc> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(27))<CR>'
+        else
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <Esc><Esc>'
+        endif
+    else
+        " use <Esc> to send <Esc> to terminal
+        if l:action == 'start'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> ' . g:ConqueTerm_EscKey . ' <Esc>'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <Esc> <C-o>:python ' . b:ConqueTerm_Var . '.write(chr(27))<CR>'
+        else
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> ' . g:ConqueTerm_EscKey
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <Esc>'
+        endif
+    endif
+
+    " Map <C-w> in insert mode
+    if exists('g:ConqueTerm_CWInsert') && g:ConqueTerm_CWInsert == 1
+        inoremap <silent> <buffer> <C-w>j <Esc><C-w>j
+        inoremap <silent> <buffer> <C-w>k <Esc><C-w>k
+        inoremap <silent> <buffer> <C-w>h <Esc><C-w>h
+        inoremap <silent> <buffer> <C-w>l <Esc><C-w>l
+        inoremap <silent> <buffer> <C-w>w <Esc><C-w>w
+    endif
 
     " map ASCII 33-127
     for i in range(33, 127)
         " <Bar>
         if i == 124
-            silent execute "inoremap <silent> <buffer> <Bar> <C-o>:python " . b:ConqueTerm_Var . ".write(chr(124))<CR>"
+            if l:action == 'start'
+                sil exe "i" . map_modifier . "map <silent> <buffer> <Bar> <C-o>:python " . b:ConqueTerm_Var . ".write(chr(124))<CR>"
+            else
+                sil exe "i" . map_modifier . "map <silent> <buffer> <Bar>"
+            endif
             continue
         endif
-        silent execute "inoremap <silent> <buffer> " . nr2char(i) . " <C-o>:python " . b:ConqueTerm_Var . ".write(chr(" . i . "))<CR>"
+        if l:action == 'start'
+            sil exe "i" . map_modifier . "map <silent> <buffer> " . nr2char(i) . " <C-o>:python " . b:ConqueTerm_Var . ".write(chr(" . i . "))<CR>"
+        else
+            sil exe "i" . map_modifier . "map <silent> <buffer> " . nr2char(i)
+        endif
     endfor
 
     " map ASCII 128-255
     for i in range(128, 255)
-        silent execute "inoremap <silent> <buffer> " . nr2char(i) . " <C-o>:python " . b:ConqueTerm_Var . ".write('" . nr2char(i) . "')<CR>"
+        if l:action == 'start'
+            sil exe "i" . map_modifier . "map <silent> <buffer> " . nr2char(i) . " <C-o>:python " . b:ConqueTerm_Var . ".write('" . nr2char(i) . "')<CR>"
+        else
+            sil exe "i" . map_modifier . "map <silent> <buffer> " . nr2char(i)
+        endif
     endfor
 
     " Special cases
-    silent execute 'inoremap <silent> <buffer> <BS> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u0008")<CR>'
-    "silent execute 'inoremap <silent> <buffer> <Tab> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u0009")<CR>'
-    silent execute 'inoremap <silent> <buffer> <LF> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u000a")<CR>'
-    silent execute 'inoremap <silent> <buffer> <CR> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u000d")<CR>'
-    silent execute 'inoremap <silent> <buffer> <Space> <C-o>:python ' . b:ConqueTerm_Var . '.write(" ")<CR>'
-    silent execute 'inoremap <silent> <buffer> <Up> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[A")<CR>'
-    silent execute 'inoremap <silent> <buffer> <Down> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[B")<CR>'
-    silent execute 'inoremap <silent> <buffer> <Right> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[C")<CR>'
-    silent execute 'inoremap <silent> <buffer> <Left> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[D")<CR>'
-
-    " meta characters 
-    "for c in split(s:chars_meta, '\zs')
-    "    silent execute 'inoremap <silent> <buffer> <M-' . c . '> <Esc>:call conque_term#press_key("<C-v><Esc>' . c . '")<CR>a'
-    "endfor
+    if l:action == 'start'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <BS> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u0008")<CR>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Space> <C-o>:python ' . b:ConqueTerm_Var . '.write(" ")<CR>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Up> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[A")<CR>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Down> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[B")<CR>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Right> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[C")<CR>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Left> <C-o>:python ' . b:ConqueTerm_Var . '.write(u"\u001b[D")<CR>'
+    else
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <BS>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Space>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Up>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Down>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Right>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <Left>'
+    endif
 
     " send selected text into conque
-	vnoremap <silent> <F9> :<C-u>call conque_term#send_selected(visualmode())<CR>
+    if l:action == 'start'
+        sil exe 'v' . map_modifier . 'map <silent> <F9> :<C-u>call conque_term#send_selected(visualmode())<CR>'
+    else
+        sil exe 'v' . map_modifier . 'map <silent> <F9>'
+    endif
 
     " remap paste keys
-    silent execute 'nnoremap <silent> <buffer> p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
-    silent execute 'nnoremap <silent> <buffer> P :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
-    silent execute 'nnoremap <silent> <buffer> ]p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
-    silent execute 'nnoremap <silent> <buffer> [p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
+    if l:action == 'start'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> P :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> ]p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> [p :python ' . b:ConqueTerm_Var . '.write(vim.eval("@@"))<CR>a'
+    else
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> p'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> P'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> ]p'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> [p'
+    endif
     if has('gui_running')
-        silent execute 'inoremap <buffer> <S-Insert> <Esc>:<C-u>python ' . b:ConqueTerm_Var . ".write(vim.eval('@+'))<CR>a"
+        if l:action == 'start'
+            sil exe 'i' . map_modifier . 'map <buffer> <S-Insert> <Esc>:<C-u>python ' . b:ConqueTerm_Var . ".write(vim.eval('@+'))<CR>a"
+        else
+            sil exe 'i' . map_modifier . 'map <buffer> <S-Insert>'
+        endif
     endif
 
     " disable other normal mode keys which insert text
-    nnoremap <silent> <buffer> r :echo 'Replace mode disabled in shell.'<CR>
-    nnoremap <silent> <buffer> R :echo 'Replace mode disabled in shell.'<CR>
-    nnoremap <silent> <buffer> c :echo 'Change mode disabled in shell.'<CR>
-    nnoremap <silent> <buffer> C :echo 'Change mode disabled in shell.'<CR>
-    nnoremap <silent> <buffer> s :echo 'Change mode disabled in shell.'<CR>
-    nnoremap <silent> <buffer> S :echo 'Change mode disabled in shell.'<CR>
+    if l:action == 'start'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> r :echo "Replace mode disabled in shell."<CR>'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> R :echo "Replace mode disabled in shell."<CR>'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> c :echo "Change mode disabled in shell."<CR>'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> C :echo "Change mode disabled in shell."<CR>'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> s :echo "Change mode disabled in shell."<CR>'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> S :echo "Change mode disabled in shell."<CR>'
+    else
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> r'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> R'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> c'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> C'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> s'
+        sil exe 'n' . map_modifier . 'map <silent> <buffer> S'
+    endif
 
-    " help message about <Esc>
-    "nnoremap <silent> <buffer> <Esc> :echo 'To send an <E'.'sc> to the terminal, press <E'.'sc><E'.'sc> quickly in insert mode. Some programs, such as Vim, will also accept <Ctrl-c> as a substitute for <E'.'sc>'<CR><Esc>
+    " set conque as on or off
+    if l:action == 'start'
+        let b:conque_on = 1
+    else
+        let b:conque_on = 0
+    endif
 
-endfunction "}}}
+    " map command to start stop the shell
+    if a:action == 'start'
+        nnoremap <F5> :<C-u>call conque_term#set_mappings('toggle')<CR>
+    endif
+
+endfunction " }}}
+
 
 " send selected text from another buffer
 function! conque_term#send_selected(type) "{{{
     let reg_save = @@
 
-    " yank current selection
-    silent execute "normal! `<" . a:type . "`>y"
+    " save user's sb settings
+    let sb_save = &switchbuf
+    set switchbuf=usetab
 
+    " yank current selection
+    sil exe "normal! `<" . a:type . "`>y"
+
+    " format yanked text
     let @@ = substitute(@@, '^[\r\n]*', '', '')
     let @@ = substitute(@@, '[\r\n]*$', '', '')
 
-    silent execute ":sb " . g:Conque_BufName
-    silent execute 'python ' . g:ConqueTerm_Var . '.paste_selection()'
+    " execute yanked text
+    sil exe ":sb " . g:ConqueTerm_BufName
+    sil exe 'python ' . g:ConqueTerm_Var . '.paste_selection()'
 
+    " reset original values
     let @@ = reg_save
+    sil exe 'set switchbuf=' . sb_save
+
+    " scroll buffer left
     startinsert!
+    normal 0zH
 endfunction "}}}
 
 " read from all known conque buffers
@@ -225,9 +360,8 @@ function! conque_term#read_all() "{{{
         " probably a deleted buffer
     endtry
 
-    " TODO - doesn't work
     " restart updatetime
-    "call feedkeys("\x80\xFD\x35")
+    call feedkeys("f\e")
 endfunction "}}}
 
 " util function to add enough \s to pass a string to python
@@ -243,6 +377,8 @@ endfunction "}}}
 " **********************************************************************************************************
 " **** PYTHON **********************************************************************************************
 " **********************************************************************************************************
+
+if has('python')
 
 python << EOF
 
@@ -397,7 +533,6 @@ class Conque:
     # CLASS PROPERTIES {{{ 
 
     # screen object
-    window          = None
     screen          = None
 
     # subprocess object
@@ -445,7 +580,6 @@ class Conque:
 
     # constructor
     def __init__(self): # {{{
-        self.window = vim.current.window
         self.screen = ConqueScreen()
         # }}}
 
@@ -453,11 +587,11 @@ class Conque:
     def open(self, command, options): # {{{
 
         # int vars
-        self.columns = self.window.width
-        self.lines = self.window.height
-        self.working_columns = self.window.width
-        self.working_lines = self.window.height
-        self.bottom = self.window.height
+        self.columns = vim.current.window.width
+        self.lines = vim.current.window.height
+        self.working_columns = vim.current.window.width
+        self.working_lines = vim.current.window.height
+        self.bottom = vim.current.window.height
 
         # init color
         self.enable_colors = options['color']
@@ -472,6 +606,10 @@ class Conque:
 
     # write to pty
     def write(self, input): # {{{
+
+
+        # check if window size has changed
+        self.update_window_size()
 
         # write and read
         self.proc.write(input)
@@ -488,7 +626,15 @@ class Conque:
         if output == '':
             return
 
+
+
+
+
         chunks = CONQUE_SEQ_REGEX.split(output)
+
+
+
+
 
         # don't go through all the csi regex if length is one (no matches)
         if len(chunks) == 1:
@@ -499,6 +645,11 @@ class Conque:
             for s in chunks:
                 if s == '':
                     continue
+
+
+
+
+
 
                 # Check for control character match {{{
                 if CONQUE_SEQ_REGEX_CTL.match(s[0]):
@@ -559,6 +710,7 @@ class Conque:
 
         vim.command('redraw')
 
+
     # }}}
 
     # for polling
@@ -612,6 +764,7 @@ class Conque:
             self.c += len(input)
 
     def apply_color(self, start, end):
+
 
         # stop here if coloration is disabled
         if not self.enable_colors:
@@ -715,6 +868,8 @@ class Conque:
                 ts = i + 1
                 break
 
+
+
         self.c = ts
 
     # }}}
@@ -730,32 +885,48 @@ class Conque:
         if len(csi['vals']) == 0:
             csi['vals'] = [0]
 
-        for val in csi['vals']:
-            if CONQUE_FONT.has_key(val):
+        # 256 xterm color foreground
+        if len(csi['vals']) == 3 and csi['vals'][0] == 38 and csi['vals'][1] == 5:
+            self.color_changes['ctermfg'] = str(csi['vals'][2])
+            self.color_changes['guifg'] = '#' + self.xterm_to_rgb(csi['vals'][2])
 
-                # ignore starting normal colors
-                if CONQUE_FONT[val]['normal'] and len(self.color_changes) == 0:
+        # 256 xterm color background
+        elif len(csi['vals']) == 3 and csi['vals'][0] == 48 and csi['vals'][1] == 5:
+            self.color_changes['ctermbg'] = str(csi['vals'][2])
+            self.color_changes['guibg'] = '#' + self.xterm_to_rgb(csi['vals'][2])
 
-                    continue
-                # clear color changes
-                elif CONQUE_FONT[val]['normal']:
+        # 16 colors
+        else:
+            for val in csi['vals']:
+                if CONQUE_FONT.has_key(val):
 
-                    self.color_changes = {}
-                # save these color attributes for next plain_text() call
-                else:
+                    # ignore starting normal colors
+                    if CONQUE_FONT[val]['normal'] and len(self.color_changes) == 0:
 
-                    for attr in CONQUE_FONT[val]['attributes'].keys():
-                        if self.color_changes.has_key(attr) and (attr == 'cterm' or attr == 'gui'):
-                            self.color_changes[attr] += ',' + CONQUE_FONT[val]['attributes'][attr]
-                        else:
-                            self.color_changes[attr] = CONQUE_FONT[val]['attributes'][attr]
+                        continue
+                    # clear color changes
+                    elif CONQUE_FONT[val]['normal']:
+
+                        self.color_changes = {}
+                    # save these color attributes for next plain_text() call
+                    else:
+
+                        for attr in CONQUE_FONT[val]['attributes'].keys():
+                            if self.color_changes.has_key(attr) and (attr == 'cterm' or attr == 'gui'):
+                                self.color_changes[attr] += ',' + CONQUE_FONT[val]['attributes'][attr]
+                            else:
+                                self.color_changes[attr] = CONQUE_FONT[val]['attributes'][attr]
         # }}}
 
     def csi_clear_line(self, csi): # {{{
 
+
         # this escape defaults to 0
         if len(csi['vals']) == 0:
             csi['val'] = 0
+
+
+
 
         # 0 means cursor right
         if csi['val'] == 0:
@@ -776,12 +947,17 @@ class Conque:
                 for syn in self.color_history[real_line]:
                     vim.command('syn clear ' + syn['name'])
 
+
+
         # }}}
 
     def csi_cursor_right(self, csi): # {{{
         # we use 1 even if escape explicitly specifies 0
         if csi['val'] == 0:
             csi['val'] = 1
+
+
+
 
         if self.wrap_cursor and self.c + csi['val'] > self.working_columns:
             self.l += int(math.floor( (self.c + csi['val']) / self.working_columns ))
@@ -891,7 +1067,7 @@ class Conque:
             new_end = csi['vals'][1]
         else:
             new_start = 1
-            new_end = self.window.height
+            new_end = vim.current.window.height
 
         self.top = new_start
         self.bottom = new_end
@@ -910,6 +1086,8 @@ class Conque:
         # this escape defaults to 0
         if len(csi['vals']) == 0:
             csi['val'] = 0
+
+
 
         if csi['val'] == 0:
             self.tabstops[self.c - 1] = False
@@ -932,6 +1110,7 @@ class Conque:
         elif csi['val'] == 7: 
             self.autowrap = True
 
+
         self.color_changes = {}
         # }}}
 
@@ -948,6 +1127,7 @@ class Conque:
         # reset auto wrap
         elif csi['val'] == 7: 
             self.autowrap = False
+
 
         self.color_changes = {}
         # }}}
@@ -1003,6 +1183,7 @@ class Conque:
 
     def change_title(self, key, val):
 
+
         if key == '0' or key == '2':
 
             vim.command('setlocal statusline=' + re.escape(val))
@@ -1016,20 +1197,22 @@ class Conque:
 
     def update_window_size(self):
         # resize if needed
-        if self.window.width != self.columns or self.window.height != self.lines:
+        if vim.current.window.width != self.columns or vim.current.window.height != self.lines:
 
             # reset all window size attributes to default
-            self.columns = self.window.width
-            self.lines = self.window.height
-            self.working_columns = self.window.width
-            self.working_lines = self.window.height
-            self.bottom = self.window.height
+            self.columns = vim.current.window.width
+            self.lines = vim.current.window.height
+            self.working_columns = vim.current.window.width
+            self.working_lines = vim.current.window.height
+            self.bottom = vim.current.window.height
 
             # reset screen object attributes
             self.l = self.screen.reset_size(self.l)
 
             # reset tabstops
             self.init_tabstops()
+
+
 
             # signal process that screen size has changed
             self.proc.window_resize(self.lines, self.columns)
@@ -1083,7 +1266,27 @@ class Conque:
         return val
         # }}}
 
+    def xterm_to_rgb(self, color_code): # {{{
+        if color_code < 16:
+            ascii_colors = ['000000', 'CD0000', '00CD00', 'CDCD00', '0000EE', 'CD00CD', '00CDCD', 'E5E5E5', 
+                   '7F7F7F', 'FF0000', '00FF00', 'FFFF00', '5C5CFF', 'FF00FF', '00FFFF', 'FFFFFF']
+            return ascii_colors[color_code]
+
+        elif color_code < 232:
+            cc = int(color_code) - 16
+
+            p1 = "%02x" % (math.floor(cc / 36) * (255/5))
+            p2 = "%02x" % (math.floor((cc % 36) / 6) * (255/5))
+            p3 = "%02x" % (math.floor(cc % 6) * (255/5))
+
+            return p1 + p2 + p3
+        else:
+            grey_tone = "%02x" % math.floor((255/24) * (color_code - 232))
+            return grey_tone + grey_tone + grey_tone
+        # }}}
+
     # }}}
+
 
 import os, signal, pty, tty, select, fcntl, termios, struct
 
@@ -1112,6 +1315,7 @@ class ConqueSubprocess:
 
         except:
             pass
+
 
         # child proc, replace with command after altering terminal attributes
         if self.pid == 0:
@@ -1210,6 +1414,7 @@ class ConqueSubprocess:
 
         # }}}
 
+
 ###################################################################################################
 # ConqueScreen is an extention of the vim.current.buffer object
 # It restricts the working indices of the buffer object to the scroll region which pty is expecting
@@ -1231,7 +1436,6 @@ class ConqueScreen(object):
 
     # the buffer
     buffer          = None
-    window          = None
 
     # screen and scrolling regions
     screen_top      = 1
@@ -1244,11 +1448,10 @@ class ConqueScreen(object):
 
     def __init__(self): # {{{
         self.buffer = vim.current.buffer
-        self.window = vim.current.window
 
         self.screen_top = 1
-        self.screen_width = self.window.width
-        self.screen_height = self.window.height
+        self.screen_width = vim.current.window.width
+        self.screen_height = vim.current.window.height
     # }}}
 
     ###############################################################################################
@@ -1341,22 +1544,28 @@ class ConqueScreen(object):
         if len(self.buffer[real_line - 1]) < real_column:
             self.buffer[real_line - 1] = self.buffer[real_line - 1] + ' ' * (real_column - len(self.buffer[real_line - 1]))
 
-        # XXX - Using python's version makes lots of super-fun segfaults
-        self.window.cursor = (real_line, real_column - 1)
-        #vim.command('call cursor(' + str(real_line) + ', ' + str(real_column) + ')')
+        # python version is occasionally grumpy
+        try:
+            vim.current.window.cursor = (real_line, real_column - 1)
+        except:
+            vim.command('call cursor(' + str(real_line) + ', ' + str(real_column) + ')')
     # }}}
 
     def reset_size(self, line): # {{{
+
+
+
 
         # save cursor line number
         real_line = self.screen_top + line
 
         # reset screen size
-        self.screen_width = self.window.width
-        self.screen_height = self.window.height
-        self.screen_top = len(self.buffer) - self.window.height + 1
+        self.screen_width = vim.current.window.width
+        self.screen_height = vim.current.window.height
+        self.screen_top = len(self.buffer) - vim.current.window.height + 1
         if self.screen_top < 1:
             self.screen_top = 1
+
 
         # align bottom of buffer to bottom of screen
         vim.command('normal ' + str(self.screen_height) + 'kG')
@@ -1366,7 +1575,7 @@ class ConqueScreen(object):
     # }}}
 
     def scroll_to_bottom(self): # {{{
-        self.window.cursor = (len(self.buffer) - 1, 1)
+        vim.current.window.cursor = (len(self.buffer) - 1, 1)
     # }}}
         
     def align(self): # {{{
@@ -1374,5 +1583,8 @@ class ConqueScreen(object):
         vim.command('normal ' + str(self.screen_height) + 'kG')
     # }}}
 
+
 EOF
+
+endif
 

@@ -1,7 +1,7 @@
 " FILE:     plugin/conque_term.vim {{{
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2010-02-02
-" VERSION:  1.0, for Vim 7.0
+" MODIFIED: 2010-05-27
+" VERSION:  1.1, for Vim 7.0
 " LICENSE:
 " Conque - pty interaction in Vim
 " Copyright (C) 2009-2010 Nico Raffo 
@@ -37,7 +37,15 @@ endif
 " **** CONFIG **********************************************************************************************
 " **********************************************************************************************************
 
-" Enable color {{{
+" Choose key mapping to leave insert mode {{{
+" If you choose something other than '<Esc>', then <Esc> will be sent to terminal
+" Using a different key will usually fix Alt/Meta key issues
+if !exists('g:ConqueTerm_EscKey')
+    let g:ConqueTerm_EscKey = '<Esc>'
+endif " }}}
+
+" Enable color. {{{
+" If your apps use a lot of color it will slow down the shell.
 if !exists('g:ConqueTerm_Color')
     let g:ConqueTerm_Color = 1
 endif " }}}
@@ -52,9 +60,9 @@ if !exists('g:ConqueTerm_Syntax')
     let g:ConqueTerm_Syntax = 'conque_term'
 endif " }}}
 
-" Read when unfocused {{{
+" Keep on updating the shell window after you've switched to another buffer {{{
 if !exists('g:ConqueTerm_ReadUnfocused')
-    let g:ConqueTerm_ReadUnfocused = 1
+    let g:ConqueTerm_ReadUnfocused = 0
 endif " }}}
 
 " Use this regular expression to highlight prompt {{{
@@ -62,19 +70,24 @@ if !exists('g:ConqueTerm_PromptRegex')
     let g:ConqueTerm_PromptRegex = '^\w\+@[0-9A-Za-z_.-]\+:[0-9A-Za-z_./\~,:-]\+\$'
 endif " }}}
 
+" Allow user to use <C-w> keys to switch window in insert mode. {{{
+if !exists('g:ConqueTerm_CWInsert')
+    let g:ConqueTerm_CWInsert = 0
+endif " }}}
+
 " **********************************************************************************************************
 " **** Startup *********************************************************************************************
 " **********************************************************************************************************
 
 " Startup {{{
-setlocal encoding=utf-8
 
 let g:ConqueTerm_Loaded = 1
 let g:ConqueTerm_Idx = 1
 
 command! -nargs=+ -complete=shellcmd ConqueTerm call conque_term#open(<q-args>)
-command! -nargs=+ -complete=shellcmd ConqueTermSplit call conque_term#open(<q-args>, ['split'])
-command! -nargs=+ -complete=shellcmd ConqueTermVSplit call conque_term#open(<q-args>, ['vsplit'])
+command! -nargs=+ -complete=shellcmd ConqueTermSplit call conque_term#open(<q-args>, ['belowright split'])
+command! -nargs=+ -complete=shellcmd ConqueTermVSplit call conque_term#open(<q-args>, ['belowright vsplit'])
+command! -nargs=+ -complete=shellcmd ConqueTermTab call conque_term#open(<q-args>, ['tabnew'])
 
 " }}}
 
