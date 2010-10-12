@@ -3,6 +3,11 @@
 " MySQL *************************************************************************************************************
 " *******************************************************************************************************************
 
+" TODO Move these to syntax which is only executed for mysql
+"syn match MySQLTableBodyG "^\s*\w\+:\(.\+\)\=$" contains=MySQLTableHeadG,MySQLNullG,MySQLBool,MySQLNumberG,MySQLStorageClass oneline skipwhite skipnl
+"syn match MySQLTableHeadG "^\s*\w\+:" contains=MySQLTableColon skipwhite contained
+"syn match MySQLTableColon ":" contained
+
 syn match MySQLTableHead "^ *|.*| *$" nextgroup=MySQLTableDivide contains=MySQLTableBar oneline skipwhite skipnl
 syn match MySQLTableBody "^ *|.*| *$" nextgroup=MySQLTableBody,MySQLTableEnd contains=MySQLTableBar,MySQLNull,MySQLBool,MySQLNumber,MySQLStorageClass oneline skipwhite skipnl
 syn match MySQLTableEnd "^ *+[+=-]\++ *$" oneline 
@@ -15,7 +20,7 @@ syn match MySQLStorageClass " UNI " contained
 syn match MySQLStorageClass " CURRENT_TIMESTAMP " contained
 syn match MySQLStorageClass " auto_increment " contained
 syn match MySQLTableBar "|" contained
-syn match MySQLNumber "|\? *\d\+ *|" contained contains=MySQLTableBar
+syn match MySQLNumber "|\?  *\d\+\(\.\d\+\)\?  *|" contained contains=MySQLTableBar
 syn match MySQLQueryStat "^\d\+ rows\? in set.*" oneline
 syn match MySQLPromptLine "^.\?mysql> .*$" contains=MySQLKeyword,MySQLPrompt,MySQLString oneline
 syn match MySQLPromptLine "^    -> .*$" contains=MySQLKeyword,MySQLPrompt,MySQLString oneline
@@ -23,11 +28,12 @@ syn match MySQLPrompt "^.\?mysql>" contained oneline
 syn match MySQLPrompt "^    ->" contained oneline
 syn case ignore
 syn keyword MySQLKeyword select count max sum avg date show table tables status like as from left right outer inner join contained 
-syn keyword MySQLKeyword where group by having limit offset order desc asc show contained
+syn keyword MySQLKeyword where group by having limit offset order desc asc show contained and interval is null on
 syn case match
 syn region MySQLString start=+'+ end=+'+ skip=+\\'+ contained oneline
 syn region MySQLString start=+"+ end=+"+ skip=+\\"+ contained oneline
 syn region MySQLString start=+`+ end=+`+ skip=+\\`+ contained oneline
+
 
 hi def link MySQLPrompt Identifier
 hi def link MySQLTableHead Title
@@ -62,9 +68,11 @@ endif
 " *******************************************************************************************************************
 
 " Typical Prompt
-silent execute "syn match ConquePromptLine '" . g:ConqueTerm_PromptRegex . ".*$' contains=ConquePrompt,ConqueString oneline"
-silent execute "syn match ConquePrompt '" . g:ConqueTerm_PromptRegex . "' contained oneline"
-hi def link ConquePrompt Identifier
+if g:ConqueTerm_PromptRegex != ''
+    silent execute "syn match ConquePromptLine '" . g:ConqueTerm_PromptRegex . ".*$' contains=ConquePrompt,ConqueString oneline"
+    silent execute "syn match ConquePrompt '" . g:ConqueTerm_PromptRegex . "' contained oneline"
+    hi def link ConquePrompt Identifier
+endif
 
 " Strings
 syn region ConqueString start=+'+ end=+'+ skip=+\\'+ contained oneline

@@ -1,7 +1,7 @@
 " FILE:     plugin/conque_term.vim {{{
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
-" MODIFIED: 2010-05-27
-" VERSION:  1.1, for Vim 7.0
+" MODIFIED: 2010-10-10
+" VERSION:  1.2, for Vim 7.0
 " LICENSE:
 " Conque - pty interaction in Vim
 " Copyright (C) 2009-2010 Nico Raffo 
@@ -37,11 +37,26 @@ endif
 " **** CONFIG **********************************************************************************************
 " **********************************************************************************************************
 
+" automatically go into insert mode when entering buffer {{{
+if !exists('g:ConqueTerm_InsertOnEnter')
+    let g:ConqueTerm_InsertOnEnter = 0
+endif " }}}
+
+" Allow user to use <C-w> keys to switch window in insert mode. {{{
+if !exists('g:ConqueTerm_CWInsert')
+    let g:ConqueTerm_CWInsert = 0
+endif " }}}
+
 " Choose key mapping to leave insert mode {{{
 " If you choose something other than '<Esc>', then <Esc> will be sent to terminal
 " Using a different key will usually fix Alt/Meta key issues
 if !exists('g:ConqueTerm_EscKey')
     let g:ConqueTerm_EscKey = '<Esc>'
+endif " }}}
+
+" Use this key to send selected text to conque. {{{
+if !exists('g:ConqueTerm_SendVisKey')
+    let g:ConqueTerm_SendVisKey = '<F9>'
 endif " }}}
 
 " Enable color. {{{
@@ -70,9 +85,9 @@ if !exists('g:ConqueTerm_PromptRegex')
     let g:ConqueTerm_PromptRegex = '^\w\+@[0-9A-Za-z_.-]\+:[0-9A-Za-z_./\~,:-]\+\$'
 endif " }}}
 
-" Allow user to use <C-w> keys to switch window in insert mode. {{{
-if !exists('g:ConqueTerm_CWInsert')
-    let g:ConqueTerm_CWInsert = 0
+" Automatically close buffer when program exits {{{
+if !exists('g:ConqueTerm_CloseOnEnd')
+    let g:ConqueTerm_CloseOnEnd = 0
 endif " }}}
 
 " **********************************************************************************************************
@@ -82,7 +97,8 @@ endif " }}}
 " Startup {{{
 
 let g:ConqueTerm_Loaded = 1
-let g:ConqueTerm_Idx = 1
+let g:ConqueTerm_Idx = 0
+let g:ConqueTerm_Version = 120
 
 command! -nargs=+ -complete=shellcmd ConqueTerm call conque_term#open(<q-args>)
 command! -nargs=+ -complete=shellcmd ConqueTermSplit call conque_term#open(<q-args>, ['belowright split'])
