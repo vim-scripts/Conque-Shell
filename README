@@ -1,6 +1,6 @@
 This is a mirror of http://www.vim.org/scripts/script.php?script_id=2771
 
-Conque is a Vim plugin allowing users to execute and interact with programs, typically a shell such as bash, inside a buffer window. The goal is always to keep the terminal behavior as close as possible to its native interface, while adding the additional features of Vim on top.
+Conque is a Vim plugin which allows you to run interactive programs, such as bash on linux or powershell.exe on Windows, inside a Vim buffer. In other words it is a terminal emulator which uses a Vim buffer to display the program output. 
 
 == WEBSITE ==
 
@@ -8,10 +8,8 @@ For more information http://code.google.com/p/conque/
 
 == SCREENSHOTS ==
 
-http://Conque.googlecode.com/svn/wiki/screenshot/colors.jpg
-http://Conque.googlecode.com/svn/wiki/screenshot/mysql.jpg
-http://Conque.googlecode.com/svn/wiki/screenshot/send.jpg
-http://Conque.googlecode.com/svn/wiki/screenshot/shells.jpg
+http://Conque.googlecode.com/svn/wiki/screenshot/unix.jpg
+http://Conque.googlecode.com/svn/wiki/screenshot/windows.jpg
 
 == USAGE ==
 
@@ -19,7 +17,8 @@ Type :ConqueTerm <command> to run your command in vim, for example:
 
 :ConqueTerm bash
 :ConqueTerm mysql -h localhost -u joe -p sock_collection
-:ConqueTerm ipython
+:ConqueTerm Powershell.exe
+:ConqueTerm C:\Python27\python.exe
 
 To open ConqueTerm in a new horizontal or vertical buffer use:
 
