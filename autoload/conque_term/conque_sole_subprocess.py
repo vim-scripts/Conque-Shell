@@ -1,11 +1,11 @@
-# FILE:     autoload/conque_term/conque_sole_subprocess.py {{{
+# FILE:     autoload/conque_term/conque_sole_subprocess.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2010-11-15
-# VERSION:  2.0, for Vim 7.0
+# MODIFIED: 2011-04-04
+# VERSION:  2.1, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2010 Nico Raffo
+# Copyright (C) 2009-2011 Nico Raffo
 #
 # MIT License
 #
@@ -25,9 +25,9 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE. }}}
+# THE SOFTWARE.
 
-""" ConqueSoleSubprocess {{{
+""" ConqueSoleSubprocess
 
 Creates a new subprocess with it's own (hidden) console window.
 
@@ -47,12 +47,7 @@ Sample Usage:
     shm_in.write("dir\r")
     output = shm_out.read(...)
 
-Requirements:
-
-    * Python for Windows extensions. Available at http://sourceforge.net/projects/pywin32/
-    * Must be run from process attached to an existing console.
-
-}}} """
+"""
 
 import time
 import re
@@ -66,9 +61,7 @@ from conque_sole_shared_memory import *
 
 class ConqueSoleSubprocess():
 
-    # Class properties {{{
-
-    #window = None
+    # subprocess handle and pid
     handle = None
     pid = None
 
@@ -117,25 +110,16 @@ class ConqueSoleSubprocess():
     # are we still a valid process?
     is_alive = True
 
+    # running in fast mode
+    fast_mode = 0
+
     # used for periodic execution of screen and memory redrawing
     screen_redraw_ct = 0
     mem_redraw_ct = 0
 
-    # }}}
 
-    # ****************************************************************************
-    # initialize class instance
-
-    def __init__(self): # {{{
-
-        pass
-
-    # }}}
-
-    # ****************************************************************************
-    # Create proccess cmd
-
-    def open(self, cmd, mem_key, options={}): # {{{
+    def open(self, cmd, mem_key, options={}):
+        """ Create subproccess running in hidden console window. """
 
 
 
@@ -155,6 +139,9 @@ class ConqueSoleSubprocess():
                 self.window_width = options['COLUMNS']
                 self.window_height = options['LINES']
                 self.buffer_width = options['COLUMNS']
+
+            # fast mode
+            self.fast_mode = options['FAST_MODE']
 
             # console window options
             si = STARTUPINFO()
@@ -178,15 +165,18 @@ class ConqueSoleSubprocess():
 
 
 
+
+            # process info
             self.pid = pi.dwProcessId
             self.handle = pi.hProcess
+
 
 
 
             # attach ourselves to the new console
             # console is not immediately available
             for i in range(10):
-                time.sleep(1)
+                time.sleep(0.25)
                 try:
 
                     res = ctypes.windll.kernel32.AttachConsole(self.pid)
@@ -221,6 +211,13 @@ class ConqueSoleSubprocess():
             # set window size
             self.set_window_size(self.window_width, self.window_height)
 
+            # set utf-8 code page
+            if 'CODE_PAGE' in options and options['CODE_PAGE'] > 0:
+                if ctypes.windll.kernel32.IsValidCodePage(ctypes.c_uint(options['CODE_PAGE'])):
+
+                    ctypes.windll.kernel32.SetConsoleCP(ctypes.c_uint(options['CODE_PAGE']))
+                    ctypes.windll.kernel32.SetConsoleOutputCP(ctypes.c_uint(options['CODE_PAGE']))
+
             # init shared memory
             self.init_shared_memory(mem_key)
 
@@ -234,17 +231,9 @@ class ConqueSoleSubprocess():
 
             return False
 
-    # }}}
 
-    # ****************************************************************************
-    # create shared memory objects
-
-    def init_shared_memory(self, mem_key): # {{{
-
-        buf_info = self.get_buffer_info()
-
-
-
+    def init_shared_memory(self, mem_key):
+        """ Create shared memory objects. """
 
         self.shm_input = ConqueSoleSharedMemory(CONQUE_SOLE_INPUT_SIZE, 'input', mem_key)
         self.shm_input.create('write')
@@ -254,9 +243,11 @@ class ConqueSoleSubprocess():
         self.shm_output.create('write')
         self.shm_output.clear()
 
-        self.shm_attributes = ConqueSoleSharedMemory(self.buffer_height * self.buffer_width, 'attributes', mem_key, True, chr(buf_info.wAttributes), encoding='latin-1')
-        self.shm_attributes.create('write')
-        self.shm_attributes.clear()
+        if not self.fast_mode:
+            buf_info = self.get_buffer_info()
+            self.shm_attributes = ConqueSoleSharedMemory(self.buffer_height * self.buffer_width, 'attributes', mem_key, True, chr(buf_info.wAttributes), encoding='latin-1')
+            self.shm_attributes.create('write')
+            self.shm_attributes.clear()
 
         self.shm_stats = ConqueSoleSharedMemory(CONQUE_SOLE_STATS_SIZE, 'stats', mem_key, serialize=True)
         self.shm_stats.create('write')
@@ -276,12 +267,9 @@ class ConqueSoleSubprocess():
 
         return True
 
-    # }}}
 
-    # ****************************************************************************
-    # check for and process commands
-
-    def check_commands(self): # {{{
+    def check_commands(self):
+        """ Check for and process commands from Vim. """
 
         cmd = self.shm_command.read()
 
@@ -320,12 +308,9 @@ class ConqueSoleSubprocess():
                 buf_info = self.get_buffer_info()
                 self.reset_console(buf_info, add_block=False)
 
-        # }}}
 
-    # ****************************************************************************
-    # read from windows console and update output buffer
-
-    def read(self, timeout=0): # {{{
+    def read(self):
+        """ Read from windows console and update shared memory blocks. """
 
         # no point really
         if self.screen_redraw_ct == 0 and not self.is_alive():
@@ -337,12 +322,6 @@ class ConqueSoleSubprocess():
         # check for commands
         self.check_commands()
 
-        # emulate timeout by sleeping timeout time
-        if timeout > 0:
-            read_timeout = float(timeout) / 1000
-
-            time.sleep(read_timeout)
-
         # get cursor position
         buf_info = self.get_buffer_info()
         curs_line = buf_info.dwCursorPosition.Y
@@ -353,11 +332,14 @@ class ConqueSoleSubprocess():
             self.screen_redraw_ct = 0
 
             read_start = self.top
-            read_end = buf_info.srWindow.Bottom + 1
+            read_end = max([buf_info.srWindow.Bottom + 1, curs_line + 1])
         else:
 
             read_start = curs_line
             read_end = curs_line + 1
+
+
+
 
         # vars used in for loop
         coord = COORD(0, 0)
@@ -369,45 +351,68 @@ class ConqueSoleSubprocess():
             coord.Y = i
 
             res = ctypes.windll.kernel32.ReadConsoleOutputCharacterW(self.stdout, ctypes.byref(self.tc), self.buffer_width, coord, ctypes.byref(chars_read))
-            ctypes.windll.kernel32.ReadConsoleOutputAttribute(self.stdout, ctypes.byref(self.ac), self.buffer_width, coord, ctypes.byref(chars_read))
+            if not self.fast_mode:
+                ctypes.windll.kernel32.ReadConsoleOutputAttribute(self.stdout, ctypes.byref(self.ac), self.buffer_width, coord, ctypes.byref(chars_read))
 
             t = self.tc.value
-            a = self.ac.value
-
-
-
+            if not self.fast_mode:
+                a = self.ac.value
 
             # add data
             if i >= len(self.data):
-                self.data.append(t)
-                self.attributes.append(a)
-            else:
-                self.data[i] = t
+                for j in range(len(self.data), i + 1):
+                    self.data.append('')
+                    if not self.fast_mode:
+                        self.attributes.append('')
+
+            self.data[i] = t
+            if not self.fast_mode:
                 self.attributes[i] = a
 
+
+
+
+            #for i in range(0, len(t)):
+
+
+
+
         # write new output to shared memory
-        if self.mem_redraw_ct == CONQUE_SOLE_MEM_REDRAW:
-            self.mem_redraw_ct = 0
+        try:
+            if self.mem_redraw_ct == CONQUE_SOLE_MEM_REDRAW:
+                self.mem_redraw_ct = 0
 
-            self.shm_output.write(''.join(self.data))
-            self.shm_attributes.write(''.join(self.attributes))
-        else:
+                for i in range(0, len(self.data)):
+                    self.shm_output.write(text=self.data[i], start=self.buffer_width * i)
+                    if not self.fast_mode:
+                        self.shm_attributes.write(text=self.attributes[i], start=self.buffer_width * i)
+            else:
 
-            self.shm_output.write(text=''.join(self.data[read_start:read_end]), start=read_start * self.buffer_width)
-            self.shm_attributes.write(text=''.join(self.attributes[read_start:read_end]), start=read_start * self.buffer_width)
+                for i in range(read_start, read_end):
+                    self.shm_output.write(text=self.data[i], start=self.buffer_width * i)
+                    if not self.fast_mode:
+                        self.shm_attributes.write(text=self.attributes[i], start=self.buffer_width * i)
+                    #self.shm_output.write(text=''.join(self.data[read_start:read_end]), start=read_start * self.buffer_width)
+                    #self.shm_attributes.write(text=''.join(self.attributes[read_start:read_end]), start=read_start * self.buffer_width)
 
-        # write cursor position to shared memory
-        stats = {'top_offset': buf_info.srWindow.Top, 'default_attribute': buf_info.wAttributes, 'cursor_x': curs_col, 'cursor_y': curs_line, 'is_alive': 1}
-        self.shm_stats.write(stats)
+            # write cursor position to shared memory
+            stats = {'top_offset': buf_info.srWindow.Top, 'default_attribute': buf_info.wAttributes, 'cursor_x': curs_col, 'cursor_y': curs_line, 'is_alive': 1}
+            self.shm_stats.write(stats)
+
+            # adjust screen position
+            self.top = buf_info.srWindow.Top
+            self.cursor_line = curs_line
+
+            # check for reset
+            if curs_line > buf_info.dwSize.Y - 200:
+                self.reset_console(buf_info)
+
+        except:
 
 
-        # adjust screen position
-        self.top = buf_info.srWindow.Top
-        self.cursor_line = curs_line
 
-        # check for reset
-        if curs_line > buf_info.dwSize.Y - 200:
-            self.reset_console(buf_info)
+
+            pass
 
         # increment redraw counters
         self.screen_redraw_ct += 1
@@ -415,12 +420,9 @@ class ConqueSoleSubprocess():
 
         return None
 
-    # }}}
 
-    # ****************************************************************************
-    # clear the console and set cursor at home position
-
-    def reset_console(self, buf_info, add_block=True): # {{{
+    def reset_console(self, buf_info, add_block=True):
+        """ Extend the height of the current console if the cursor postion gets within 200 lines of the current size. """
 
         # sometimes we just want to change the buffer width,
         # in which case no need to add another block
@@ -431,8 +433,9 @@ class ConqueSoleSubprocess():
         self.shm_output.close()
         self.shm_output = None
 
-        self.shm_attributes.close()
-        self.shm_attributes = None
+        if not self.fast_mode:
+            self.shm_attributes.close()
+            self.shm_attributes = None
 
         # new shared memory key
         mem_key = 'mk' + str(time.time())
@@ -448,15 +451,17 @@ class ConqueSoleSubprocess():
                 self.data[i] = self.data[i] + ' ' * (self.buffer_width - len(self.data[i]))
         self.shm_output.write(''.join(self.data))
 
-        self.shm_attributes = ConqueSoleSharedMemory(self.buffer_height * self.buffer_width * self.output_blocks, 'attributes', mem_key, True, chr(buf_info.wAttributes), encoding='latin-1')
-        self.shm_attributes.create('write')
-        self.shm_attributes.clear()
+        if not self.fast_mode:
+            self.shm_attributes = ConqueSoleSharedMemory(self.buffer_height * self.buffer_width * self.output_blocks, 'attributes', mem_key, True, chr(buf_info.wAttributes), encoding='latin-1')
+            self.shm_attributes.create('write')
+            self.shm_attributes.clear()
 
         # backfill attributes
         if len(self.attributes[0]) < self.buffer_width:
             for i in range(0, len(self.attributes)):
                 self.attributes[i] = self.attributes[i] + chr(buf_info.wAttributes) * (self.buffer_width - len(self.attributes[i]))
-        self.shm_attributes.write(''.join(self.attributes))
+        if not self.fast_mode:
+            self.shm_attributes.write(''.join(self.attributes))
 
         # notify wrapper of new output block
         self.shm_rescroll.write({'cmd': 'new_output', 'data': {'blocks': self.output_blocks, 'mem_key': mem_key}})
@@ -481,19 +486,20 @@ class ConqueSoleSubprocess():
         self.tc = ctypes.create_unicode_buffer(self.buffer_width)
         self.ac = ctypes.create_unicode_buffer(self.buffer_width)
 
-    # }}}
 
-    # ****************************************************************************
-    # write text to console. this function just parses out special sequences for
-    # special key events and passes on the text to the plain or virtual key functions
 
-    def write(self): # {{{
+    def write(self):
+        """ Write text to console. 
 
+        This function just parses out special sequences for special key events 
+        and passes on the text to the plain or virtual key functions.
+
+        """
         # get input from shared mem
         text = self.shm_input.read()
 
         # nothing to do here
-        if text == '':
+        if text == u(''):
             return
 
 
@@ -502,7 +508,7 @@ class ConqueSoleSubprocess():
         self.shm_input.clear()
 
         # split on VK codes
-        chunks = CONQUE_SEQ_REGEX_VK.split(text)
+        chunks = CONQUE_WIN32_REGEX_VK.split(text)
 
         # if len() is one then no vks
         if len(chunks) == 1:
@@ -517,45 +523,48 @@ class ConqueSoleSubprocess():
             if t == '':
                 continue
 
-            if CONQUE_SEQ_REGEX_VK.match(t):
+            if CONQUE_WIN32_REGEX_VK.match(t):
 
                 self.write_vk(t[2:-2])
             else:
                 self.write_plain(t)
 
-    # }}}
 
-    # ****************************************************************************
-
-    def write_plain(self, text): # {{{
+    def write_plain(self, text):
+        """ Write simple text to subprocess. """
 
         li = INPUT_RECORD * len(text)
         list_input = li()
 
         for i in range(0, len(text)):
+
             # create keyboard input
             ke = KEY_EVENT_RECORD()
             ke.bKeyDown = ctypes.c_byte(1)
             ke.wRepeatCount = ctypes.c_short(1)
 
             cnum = ord(text[i])
+
             ke.wVirtualKeyCode = ctypes.windll.user32.VkKeyScanW(cnum)
             ke.wVirtualScanCode = ctypes.c_short(ctypes.windll.user32.MapVirtualKeyW(int(cnum), 0))
 
             if cnum > 31:
-                ke.uChar.UnicodeChar = u(chr(cnum))
+                ke.uChar.UnicodeChar = uchr(cnum)
             elif cnum == 3:
                 ctypes.windll.kernel32.GenerateConsoleCtrlEvent(0, self.pid)
-                ke.uChar.UnicodeChar = u(chr(cnum))
+                ke.uChar.UnicodeChar = uchr(cnum)
                 ke.wVirtualKeyCode = ctypes.windll.user32.VkKeyScanW(cnum + 96)
-                ke.dwControlKeyState = LEFT_CTRL_PRESSED
+                ke.dwControlKeyState |= LEFT_CTRL_PRESSED
             else:
-                ke.uChar.UnicodeChar = u(chr(cnum))
+                ke.uChar.UnicodeChar = uchr(cnum)
                 if cnum in CONQUE_WINDOWS_VK_INV:
                     ke.wVirtualKeyCode = cnum
                 else:
                     ke.wVirtualKeyCode = ctypes.windll.user32.VkKeyScanW(cnum + 96)
-                    ke.dwControlKeyState = LEFT_CTRL_PRESSED
+                    ke.dwControlKeyState |= LEFT_CTRL_PRESSED
+
+
+
 
             kc = INPUT_RECORD(KEY_EVENT)
             kc.Event.KeyEvent = ke
@@ -574,27 +583,41 @@ class ConqueSoleSubprocess():
 
 
 
-    # }}}
+    def write_vk(self, vk_code):
+        """ Write special characters to console subprocess. """
 
-    # ****************************************************************************
 
-    def write_vk(self, vk_code): # {{{
 
+        code = None
+        ctrl_pressed = False
+
+        # this could be made more generic when more attributes
+        # other than ctrl_pressed are available
+        vk_attributes = vk_code.split(';')
+
+        for attr in vk_attributes:
+            if attr == CONQUE_VK_ATTR_CTRL_PRESSED:
+                ctrl_pressed = True
+            else:
+                code = attr
 
         li = INPUT_RECORD * 1
 
         # create keyboard input
         ke = KEY_EVENT_RECORD()
-        ke.uChar.UnicodeChar = u(chr(0))
-        ke.wVirtualKeyCode = ctypes.c_short(int(vk_code))
-        ke.wVirtualScanCode = ctypes.c_short(ctypes.windll.user32.MapVirtualKeyW(int(vk_code), 0))
+        ke.uChar.UnicodeChar = uchr(0)
+        ke.wVirtualKeyCode = ctypes.c_short(int(code))
+        ke.wVirtualScanCode = ctypes.c_short(ctypes.windll.user32.MapVirtualKeyW(int(code), 0))
         ke.bKeyDown = ctypes.c_byte(1)
         ke.wRepeatCount = ctypes.c_short(1)
 
         # set enhanced key mode for arrow keys
-        if vk_code in CONQUE_WINDOWS_VK_ENHANCED:
+        if code in CONQUE_WINDOWS_VK_ENHANCED:
 
-            ke.dwControlKeyState = ENHANCED_KEY
+            ke.dwControlKeyState |= ENHANCED_KEY
+
+        if ctrl_pressed:
+            ke.dwControlKeyState |= LEFT_CTRL_PRESSED
 
         kc = INPUT_RECORD(KEY_EVENT)
         kc.Event.KeyEvent = ke
@@ -610,11 +633,8 @@ class ConqueSoleSubprocess():
 
 
 
-    # }}}
-
-    # ****************************************************************************
-
-    def close(self): # {{{
+    def close(self):
+        """ Close all running subproccesses """
 
         # record status
         self.is_alive = False
@@ -656,18 +676,18 @@ class ConqueSoleSubprocess():
 
             pass
 
+
     def close_pid(self, pid):
+        """ Terminate a single process. """
+
 
         handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, 0, pid)
         ctypes.windll.kernel32.TerminateProcess(handle, -1)
         ctypes.windll.kernel32.CloseHandle(handle)
 
-    # }}}
 
-    # ****************************************************************************
-    # check process health
-
-    def is_alive(self): # {{{
+    def is_alive(self):
+        """ Check process health. """
 
         status = ctypes.windll.kernel32.WaitForSingleObject(self.handle, 1)
 
@@ -677,21 +697,15 @@ class ConqueSoleSubprocess():
 
         return self.is_alive
 
-        # }}}
 
-
-    # ****************************************************************************
-    # return screen data as string
-
-    def get_screen_text(self): # {{{
+    def get_screen_text(self):
+        """ Return screen data as string. """
 
         return "\n".join(self.data)
 
-        # }}}
 
-    # ****************************************************************************
-
-    def set_window_size(self, width, height): # {{{
+    def set_window_size(self, width, height):
+        """ Change Windows console size. """
 
 
 
@@ -735,19 +749,14 @@ class ConqueSoleSubprocess():
         self.window_width = buf_info.srWindow.Right + 1
         self.window_height = buf_info.srWindow.Bottom + 1
 
-        # }}}
 
-    # ****************************************************************************
-    # get buffer info, used a lot
-
-    def get_buffer_info(self): # {{{
+    def get_buffer_info(self):
+        """ Retrieve commonly-used buffer information. """
 
         buf_info = CONSOLE_SCREEN_BUFFER_INFO()
         ctypes.windll.kernel32.GetConsoleScreenBufferInfo(self.stdout, ctypes.byref(buf_info))
 
         return buf_info
 
-        # }}}
 
 
-# vim:foldmethod=marker

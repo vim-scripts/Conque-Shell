@@ -1,11 +1,11 @@
-# FILE:     autoload/conque_term/conque_screen.py {{{
+# FILE:     autoload/conque_term/conque_screen.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2010-11-15
-# VERSION:  2.0, for Vim 7.0
+# MODIFIED: 2011-04-04
+# VERSION:  2.1, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2010 Nico Raffo
+# Copyright (C) 2009-2011 Nico Raffo
 #
 # MIT License
 #
@@ -25,14 +25,19 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE. }}}
+# THE SOFTWARE.
 
 """
 ConqueScreen is an extention of the vim.current.buffer object
 
-It restricts the working indices of the buffer object to the scroll region
-which pty is expecting. It also uses 1-based indexes, to match escape
-sequence commands.
+Unix terminal escape sequences usually reference line numbers relative to the 
+top of the visible screen. However the visible portion of the Vim buffer
+representing the terminal probably doesn't start at the first line of the 
+buffer.
+
+The ConqueScreen class allows access to the Vim buffer with screen-relative
+line numbering. And handles a few other related tasks, such as setting the
+correct cursor position.
 
   E.g.:
     s = ConqueScreen()
@@ -40,14 +45,13 @@ sequence commands.
     s[5] = 'Set 5th line in terminal to this line'
     s.append('Add new line to terminal')
     s[5] = 'Since previous append() command scrolled the terminal down, this is a different line than first cb[5] call'
+
 """
 
 import vim
 
 
 class ConqueScreen(object):
-
-    # CLASS PROPERTIES  {{{
 
     # the buffer
     buffer = None
@@ -59,55 +63,66 @@ class ConqueScreen(object):
     screen_width = 80
     screen_height = 80
 
-    # }}}
+    # char encoding for vim buffer
+    screen_encoding = 'utf-8'
 
-    def __init__(self): # {{{
+
+    def __init__(self):
+        """ Initialize screen size and character encoding. """
+
         self.buffer = vim.current.buffer
 
+        # initialize screen size
         self.screen_top = 1
         self.screen_width = vim.current.window.width
         self.screen_height = vim.current.window.height
-    # }}}
 
-    ###############################################################################################
-    # List overload {{{
+        # save screen character encoding type
+        self.screen_encoding = vim.eval('&fileencoding')
 
-    def __len__(self): # {{{
+
+    def __len__(self):
+        """ Define the len() function for ConqueScreen objects. """
         return len(self.buffer)
-    # }}}
 
-    def __getitem__(self, key): # {{{
-        real_line = self.get_real_idx(key)
+
+    def __getitem__(self, key):
+        """ Define value access for ConqueScreen objects. """
+        buffer_line = self.get_real_idx(key)
 
         # if line is past buffer end, add lines to buffer
-        if real_line >= len(self.buffer):
-            for i in range(len(self.buffer), real_line + 1):
-                self.append(' ' * self.screen_width)
+        if buffer_line >= len(self.buffer):
+            for i in range(len(self.buffer), buffer_line + 1):
+                self.append(' ')
 
-        return u(self.buffer[real_line], 'utf-8')
-    # }}}
+        return u(self.buffer[buffer_line], 'utf-8')
 
-    def __setitem__(self, key, value): # {{{
-        real_line = self.get_real_idx(key)
+
+    def __setitem__(self, key, value):
+        """ Define value assignments for ConqueScreen objects. """
+        buffer_line = self.get_real_idx(key)
 
         if CONQUE_PYTHON_VERSION == 2:
-            val = value.encode('utf-8')
+            val = value.encode(self.screen_encoding)
         else:
             # XXX / Vim's python3 interface doesn't accept bytes object
             val = str(value)
 
         # if line is past end of screen, append
-        if real_line == len(self.buffer):
+        if buffer_line == len(self.buffer):
             self.buffer.append(val)
         else:
-            self.buffer[real_line] = val
-    # }}}
+            self.buffer[buffer_line] = val
 
-    def __delitem__(self, key): # {{{
+
+    def __delitem__(self, key):
+        """ Define value deletion for ConqueScreen objects. """
         del self.buffer[self.screen_top + key - 2]
-    # }}}
 
-    def append(self, value): # {{{
+
+    def append(self, value):
+        """ Define value appending for ConqueScreen objects. """
+
         if len(self.buffer) > self.screen_top + self.screen_height - 1:
             self.buffer[len(self.buffer) - 1] = value
         else:
@@ -115,72 +130,83 @@ class ConqueScreen(object):
 
         if len(self.buffer) > self.screen_top + self.screen_height - 1:
             self.screen_top += 1
-        if vim.current.buffer.number == self.buffer.number:
-            vim.command('normal G')
-    # }}}
 
-    def insert(self, line, value): # {{{
+        if vim.current.buffer.number == self.buffer.number:
+            vim.command('normal! G')
+
+
+    def insert(self, line, value):
+        """ Define value insertion for ConqueScreen objects. """
 
         l = self.screen_top + line - 2
         self.buffer.append(value, l)
 
-    # }}}
-    # }}}
 
-    ###############################################################################################
-    # Util {{{
-
-    def get_top(self): # {{{
+    def get_top(self):
+        """ Get the Vim line number representing the top of the visible terminal. """
         return self.screen_top
-    # }}}
 
-    def get_real_idx(self, line): # {{{
+
+    def get_real_idx(self, line):
+        """ Get the zero index Vim line number corresponding to the provided screen line. """
         return (self.screen_top + line - 2)
-    # }}}
 
-    def get_real_line(self, line): # {{{
+
+    def get_buffer_line(self, line):
+        """ Get the Vim line number corresponding to the provided screen line. """
         return (self.screen_top + line - 1)
-    # }}}
 
-    def set_screen_width(self, width): # {{{
+
+    def set_screen_width(self, width):
+        """ Set the screen width. """
         self.screen_width = width
-    # }}}
 
-    # }}}
 
-    ###############################################################################################
-    def clear(self): # {{{
+    def clear(self):
+        """ Clear the screen. Does not clear the buffer, just scrolls down past all text. """
+
+        self.screen_width = width
         self.buffer.append(' ')
-        vim.command('normal Gzt')
+        vim.command('normal! Gzt')
         self.screen_top = len(self.buffer)
-    # }}}
 
-    def set_cursor(self, line, column): # {{{
+
+    def set_cursor(self, line, column):
+        """ Set cursor position. """
+
         # figure out line
-        real_line = self.screen_top + line - 1
-        if real_line > len(self.buffer):
-            for l in range(len(self.buffer) - 1, real_line):
+        buffer_line = self.screen_top + line - 1
+        if buffer_line > len(self.buffer):
+            for l in range(len(self.buffer) - 1, buffer_line):
                 self.buffer.append('')
 
         # figure out column
         real_column = column
-        if len(self.buffer[real_line - 1]) < real_column:
-            self.buffer[real_line - 1] = self.buffer[real_line - 1] + ' ' * (real_column - len(self.buffer[real_line - 1]))
+        if len(self.buffer[buffer_line - 1]) < real_column:
+            self.buffer[buffer_line - 1] = self.buffer[buffer_line - 1] + ' ' * (real_column - len(self.buffer[buffer_line - 1]))
 
-        # python version is occasionally grumpy
-        try:
-            vim.current.window.cursor = (real_line, real_column - 1)
-        except:
-            vim.command('call cursor(' + str(real_line) + ', ' + str(real_column) + ')')
-    # }}}
+        if not CONQUE_FAST_MODE:
+            # set cursor at byte index of real_column'th character
+            vim.command('call cursor(' + str(buffer_line) + ', byteidx(getline(' + str(buffer_line) + '), ' + str(real_column) + '))')
 
-    def reset_size(self, line): # {{{
+        else:
+            # old version
+            # python version is occasionally grumpy
+            try:
+                vim.current.window.cursor = (buffer_line, real_column - 1)
+            except:
+                vim.command('call cursor(' + str(buffer_line) + ', ' + str(real_column) + ')')
+
+
+    def reset_size(self, line):
+        """ Change screen size """
+
 
 
 
 
         # save cursor line number
-        real_line = self.screen_top + line
+        buffer_line = self.screen_top + line
 
         # reset screen size
         self.screen_width = vim.current.window.width
@@ -191,19 +217,14 @@ class ConqueScreen(object):
 
 
         # align bottom of buffer to bottom of screen
-        vim.command('normal ' + str(self.screen_height) + 'kG')
+        vim.command('normal! ' + str(self.screen_height) + 'kG')
 
         # return new relative line number
-        return (real_line - self.screen_top)
-    # }}}
+        return (buffer_line - self.screen_top)
 
-    def scroll_to_bottom(self): # {{{
-        vim.current.window.cursor = (len(self.buffer) - 1, 1)
-    # }}}
 
-    def align(self): # {{{
-        # align bottom of buffer to bottom of screen
-        vim.command('normal ' + str(self.screen_height) + 'kG')
-    # }}}
+    def align(self):
+        """ align bottom of buffer to bottom of screen """
+        vim.command('normal! ' + str(self.screen_height) + 'kG')
 
-# vim:foldmethod=marker
+

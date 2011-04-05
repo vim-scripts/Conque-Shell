@@ -1,11 +1,11 @@
 " FILE:     plugin/conque_term.vim {{{
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 " WEBSITE:  http://conque.googlecode.com
-" MODIFIED: 2010-11-15
-" VERSION:  2.0, for Vim 7.0
+" MODIFIED: 2011-04-04
+" VERSION:  2.1, for Vim 7.0
 " LICENSE:
 " Conque - Vim terminal/console emulator
-" Copyright (C) 2009-2010 Nico Raffo 
+" Copyright (C) 2009-2011 Nico Raffo 
 "
 " MIT License
 " 
@@ -28,17 +28,25 @@
 " THE SOFTWARE.
 " }}}
 
-" See docs/conque_term.txt for help or type :help conque_term
+" See docs/conque_term.txt for help or type :help ConqueTerm
 
 if exists('g:ConqueTerm_Loaded') || v:version < 700
     finish
 endif
 
 " **********************************************************************************************************
-" **** CONFIG **********************************************************************************************
+" **** CONFIGURATION ***************************************************************************************
 " **********************************************************************************************************
 
 " {{{
+
+" Fast mode {{{
+" Disables all features which could cause Conque to run slowly, including:
+"   * Disables terminal colors
+"   * Disables some multi-byte character handling
+if !exists('g:ConqueTerm_FastMode')
+    let g:ConqueTerm_FastMode = 0
+endif " }}}
 
 " automatically go into insert mode when entering buffer {{{
 if !exists('g:ConqueTerm_InsertOnEnter')
@@ -57,20 +65,44 @@ if !exists('g:ConqueTerm_EscKey')
     let g:ConqueTerm_EscKey = '<Esc>'
 endif " }}}
 
+" Use this key to execute the current file in a split window. {{{
+" THIS IS A GLOBAL KEY MAPPING
+if !exists('g:ConqueTerm_ExecFileKey')
+    let g:ConqueTerm_ExecFileKey = '<F11>'
+endif " }}}
+
+" Use this key to send the current file contents to conque. {{{
+" THIS IS A GLOBAL KEY MAPPING
+if !exists('g:ConqueTerm_SendFileKey')
+    let g:ConqueTerm_SendFileKey = '<F10>'
+endif " }}}
+
 " Use this key to send selected text to conque. {{{
+" THIS IS A GLOBAL KEY MAPPING
 if !exists('g:ConqueTerm_SendVisKey')
     let g:ConqueTerm_SendVisKey = '<F9>'
 endif " }}}
 
 " Use this key to toggle terminal key mappings. {{{
+" Only mapped inside of Conque buffers.
 if !exists('g:ConqueTerm_ToggleKey')
     let g:ConqueTerm_ToggleKey = '<F8>'
 endif " }}}
 
 " Enable color. {{{
 " If your apps use a lot of color it will slow down the shell.
+" 0 - no terminal colors. You still will see Vim syntax highlighting.
+" 1 - limited terminal colors (recommended). Past terminal color history cleared regularly.
+" 2 - all terminal colors. Terminal color history never cleared.
 if !exists('g:ConqueTerm_Color')
     let g:ConqueTerm_Color = 1
+endif " }}}
+
+" Color mode. Windows ONLY {{{
+" Set this variable to 'conceal' to use Vim's conceal mode for terminal colors.
+" This makes colors render much faster, but has some odd baggage.
+if !exists('g:ConqueTerm_ColorMode')
+    let g:ConqueTerm_ColorMode = ''
 endif " }}}
 
 " TERM environment setting {{{
@@ -117,6 +149,27 @@ if !exists('g:ConqueTerm_SendFunctionKeys')
     let g:ConqueTerm_SendFunctionKeys = 0
 endif " }}}
 
+" Session support {{{
+if !exists('g:ConqueTerm_SessionSupport')
+    let g:ConqueTerm_SessionSupport = 0
+endif " }}}
+
+" hide Conque startup messages {{{
+" messages should only appear the first 3 times you start Vim with a new version of Conque
+" and include important Conque feature and option descriptions
+" TODO - disabled and unused for now
+if !exists('g:ConqueTerm_StartMessages')
+    let g:ConqueTerm_StartMessages = 0
+endif " }}}
+
+" Windows character code page {{{
+" Leave at 0 to use current environment code page.
+" Use 65001 for utf-8, although many console apps do not support it.
+if !exists('g:ConqueTerm_CodePage')
+    let g:ConqueTerm_CodePage = 0
+endif " }}}
+
+
 " }}}
 
 " **********************************************************************************************************
@@ -127,12 +180,28 @@ endif " }}}
 
 let g:ConqueTerm_Loaded = 1
 let g:ConqueTerm_Idx = 0
-let g:ConqueTerm_Version = 200
+let g:ConqueTerm_Version = 210
 
 command! -nargs=+ -complete=shellcmd ConqueTerm call conque_term#open(<q-args>)
 command! -nargs=+ -complete=shellcmd ConqueTermSplit call conque_term#open(<q-args>, ['belowright split'])
 command! -nargs=+ -complete=shellcmd ConqueTermVSplit call conque_term#open(<q-args>, ['belowright vsplit'])
 command! -nargs=+ -complete=shellcmd ConqueTermTab call conque_term#open(<q-args>, ['tabnew'])
+
+" }}}
+
+" **********************************************************************************************************
+" **** Global Mappings & Autocommands **********************************************************************
+" **********************************************************************************************************
+
+" Startup {{{
+
+if exists('g:ConqueTerm_SessionSupport') && g:ConqueTerm_SessionSupport == 1
+    autocmd SessionLoadPost * call conque_term#resume_session()
+endif
+
+if maparg(g:ConqueTerm_ExecFileKey, 'n') == ''
+    exe 'nnoremap <silent> ' . g:ConqueTerm_ExecFileKey . ' :call conque_term#exec_file()<CR>'
+endif
 
 " }}}
 

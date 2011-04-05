@@ -1,11 +1,11 @@
-# FILE:     autoload/conque_term/conque_globals.py {{{
+# FILE:     autoload/conque_term/conque_globals.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2010-11-15
-# VERSION:  2.0, for Vim 7.0
+# MODIFIED: 2011-04-04
+# VERSION:  2.1, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2010 Nico Raffo
+# Copyright (C) 2009-2011 Nico Raffo
 #
 # MIT License
 #
@@ -25,56 +25,32 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE. }}}
+# THE SOFTWARE.
 
 """Common global constants and functions for Conque."""
 
 import sys
-import os
 import re
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# shared memory size
-CONQUE_SOLE_BUFFER_LENGTH = 1000
-CONQUE_SOLE_INPUT_SIZE = 1000
-CONQUE_SOLE_STATS_SIZE = 1000
-CONQUE_SOLE_COMMANDS_SIZE = 255
-CONQUE_SOLE_RESCROLL_SIZE = 255
-CONQUE_SOLE_RESIZE_SIZE = 255
-
-# interval of screen redraw
-# larger number means less frequent
-CONQUE_SOLE_SCREEN_REDRAW = 100
-
-# interval of full buffer redraw
-# larger number means less frequent
-CONQUE_SOLE_BUFFER_REDRAW = 500
-
-# interval of full output bucket replacement
-# larger number means less frequent, 1 = every time
-CONQUE_SOLE_MEM_REDRAW = 1000
-
 # PYTHON VERSION
 CONQUE_PYTHON_VERSION = sys.version_info[0]
 
+# Encoding
 
-def u(str_val, str_encoding='latin-1', errors='strict'):
-    """foolhardy attempt to make unicode string syntax compatible with both python 2 and 3"""
+try:
+    # Vim's character encoding
+    import vim
+    CONQUE_VIM_ENCODING = vim.eval('&encoding')
+
+except:
+    CONQUE_VIM_ENCODING = 'utf-8'
+
+
+def u(str_val, str_encoding='utf-8', errors='strict'):
+    """ Foolhardy attempt to make unicode string syntax compatible with both python 2 and 3. """
 
     if not str_val:
         str_val = ''
@@ -85,7 +61,34 @@ def u(str_val, str_encoding='latin-1', errors='strict'):
     else:
         return unicode(str_val, str_encoding, errors)
 
-# Escape sequence settings  {{{
+def uchr(str):
+    """ Foolhardy attempt to make unicode string syntax compatible with both python 2 and 3. """
+
+    if CONQUE_PYTHON_VERSION == 3:
+        return chr(str)
+
+    else:
+        return unichr(str)
+
+
+# Logging
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Unix escape sequence settings
 
 CONQUE_CTL = {
      1: 'soh', # start of heading
@@ -209,7 +212,7 @@ CONQUE_GRAPHICS_SET = [
     0x00F8, 0x00F9, 0x00FA, 0x00FB, 0x00FC, 0x00FD, 0x00FE, 0x00FF
 ]
 
-# Font codes {{{
+# Font codes
 CONQUE_FONT = {
     0: {'description': 'Normal (default)', 'attributes': {'cterm': 'NONE', 'ctermfg': 'NONE', 'ctermbg': 'NONE', 'gui': 'NONE', 'guifg': 'NONE', 'guibg': 'NONE'}, 'normal': True},
     1: {'description': 'Bold', 'attributes': {'cterm': 'BOLD', 'gui': 'BOLD'}, 'normal': False},
@@ -257,31 +260,60 @@ CONQUE_FONT = {
     106: {'description': 'Set background color to Cyan', 'attributes': {'ctermbg': '14', 'guibg': '#009999'}, 'normal': False},
     107: {'description': 'Set background color to White', 'attributes': {'ctermbg': '15', 'guibg': '#ffffff'}, 'normal': False}
 }
-# }}}
+
 
 # regular expression matching (almost) all control sequences
-CONQUE_SEQ_REGEX = re.compile(u("(\x1b\[?\??#?[0-9;]*[a-zA-Z0-9@=>]|\x1b\][0-9];.*?\x07|[\x01-\x0f]|\x1b\([AB0])"), re.UNICODE)
-CONQUE_SEQ_REGEX_CTL = re.compile(u("^[\x01-\x0f]$"), re.UNICODE)
-CONQUE_SEQ_REGEX_CSI = re.compile(u("^\x1b\["), re.UNICODE)
-CONQUE_SEQ_REGEX_TITLE = re.compile(u("^\x1b\]"), re.UNICODE)
-CONQUE_SEQ_REGEX_HASH = re.compile(u("^\x1b#"), re.UNICODE)
-CONQUE_SEQ_REGEX_ESC = re.compile(u("^\x1b.$"), re.UNICODE)
-CONQUE_SEQ_REGEX_CHAR = re.compile(u("^\x1b\("), re.UNICODE)
+CONQUE_SEQ_REGEX = re.compile("(\x1b\[?\??#?[0-9;]*[a-zA-Z0-9@=>]|\x1b\][0-9];.*?\x07|[\x01-\x0f]|\x1b\([AB0])")
+CONQUE_SEQ_REGEX_CTL = re.compile("^[\x01-\x0f]$")
+CONQUE_SEQ_REGEX_CSI = re.compile("^\x1b\[")
+CONQUE_SEQ_REGEX_TITLE = re.compile("^\x1b\]")
+CONQUE_SEQ_REGEX_HASH = re.compile("^\x1b#")
+CONQUE_SEQ_REGEX_ESC = re.compile("^\x1b.$")
+CONQUE_SEQ_REGEX_CHAR = re.compile("^\x1b[()]")
 
 # match table output
 CONQUE_TABLE_OUTPUT = re.compile("^\s*\|\s.*\s\|\s*$|^\s*\+[=+-]+\+\s*$")
 
-# }}}
-
-# Windows subprocess config {{{
-
-CONQUE_SEQ_REGEX_VK = re.compile(u("(\x1b\[\d{1,3}VK)"), re.UNICODE)
-
-# }}}
-
+# basic terminal colors
 CONQUE_COLOR_SEQUENCE = (
     '000', '009', '090', '099', '900', '909', '990', '999',
     '000', '00f', '0f0', '0ff', 'f00', 'f0f', 'ff0', 'fff'
 )
 
-# vim:foldmethod=marker
+
+# Windows subprocess constants
+
+# shared memory size
+CONQUE_SOLE_BUFFER_LENGTH = 1000
+CONQUE_SOLE_INPUT_SIZE = 1000
+CONQUE_SOLE_STATS_SIZE = 1000
+CONQUE_SOLE_COMMANDS_SIZE = 255
+CONQUE_SOLE_RESCROLL_SIZE = 255
+CONQUE_SOLE_RESIZE_SIZE = 255
+
+# interval of screen redraw
+# larger number means less frequent
+CONQUE_SOLE_SCREEN_REDRAW = 50
+
+# interval of full buffer redraw
+# larger number means less frequent
+CONQUE_SOLE_BUFFER_REDRAW = 500
+
+# interval of full output bucket replacement
+# larger number means less frequent, 1 = every time
+CONQUE_SOLE_MEM_REDRAW = 1000
+
+# maximum number of lines with terminal colors
+# ignored if g:ConqueTerm_Color = 2
+CONQUE_MAX_SYNTAX_LINES = 200
+
+# windows input splitting on special keys
+CONQUE_WIN32_REGEX_VK = re.compile("(\x1b\[[0-9;]+VK)")
+
+# windows attribute string splitting
+CONQUE_WIN32_REGEX_ATTR = re.compile("((.)\\2*)", re.DOTALL)
+
+# special key attributes
+CONQUE_VK_ATTR_CTRL_PRESSED = u('1024')
+
+

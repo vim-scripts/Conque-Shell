@@ -1,11 +1,11 @@
-# FILE:     autoload/conque_term/conque_sole.py {{{
+# FILE:     autoload/conque_term/conque_sole.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2010-11-15
-# VERSION:  2.0, for Vim 7.0
+# MODIFIED: 2011-04-04
+# VERSION:  2.1, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2010 Nico Raffo
+# Copyright (C) 2009-2011 Nico Raffo
 #
 # MIT License
 #
@@ -25,7 +25,14 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE. }}}
+# THE SOFTWARE.
+
+"""
+Windows Console Emulator
+
+This is the main interface to the Windows emulator. It reads new output from the background console
+and updates the Vim buffer.
+"""
 
 import vim
 
@@ -36,19 +43,36 @@ class ConqueSole(Conque):
     window_bottom = None
 
     color_cache = {}
+    attribute_cache = {}
     color_mode = None
     color_conceals = {}
 
     buffer = None
+    encoding = None
 
     # counters for periodic rendering
-    buffer_redraw_ct = 0
-    screen_redraw_ct = 0
+    buffer_redraw_ct = 1
+    screen_redraw_ct = 1
 
-    # *********************************************************************************************
-    # start program and initialize this instance
+    # line offset, shifts output down
+    offset = 0
 
-    def open(self, command, options={}, python_exe='', communicator_py=''): # {{{
+
+    def open(self):
+        """ Start command and initialize this instance
+
+        Arguments:
+        command - Command string, e.g. "Powershell.exe"
+        options - Dictionary of config options
+        python_exe - Path to the python.exe executable. Usually C:\PythonXX\python.exe
+        communicator_py - Path to subprocess controller script in user's vimfiles directory
+      
+        """
+        # get arguments
+        command = vim.eval('command')
+        options = vim.eval('options')
+        python_exe = vim.eval('py_exe')
+        communicator_py = vim.eval('py_vim')
 
         # init size
         self.columns = vim.current.window.width
@@ -56,22 +80,25 @@ class ConqueSole(Conque):
         self.window_top = 0
         self.window_bottom = vim.current.window.height - 1
 
+        # color mode
+        self.color_mode = vim.eval('g:ConqueTerm_ColorMode')
+
+        # line offset
+        self.offset = int(options['offset'])
+
         # init color
-        self.enable_colors = options['color']
+        self.enable_colors = options['color'] and not CONQUE_FAST_MODE
 
         # open command
         self.proc = ConqueSoleWrapper()
-        self.proc.open(command, {'TERM': options['TERM'], 'CONQUE': '1', 'LINES': self.lines, 'COLUMNS': self.columns}, python_exe, communicator_py)
+        self.proc.open(command, self.lines, self.columns, python_exe, communicator_py, options)
 
         self.buffer = vim.current.buffer
+        self.screen_encoding = vim.eval('&fileencoding')
 
-        # }}}
 
-
-    # *********************************************************************************************
-    # read and update screen
-
-    def read(self, timeout=1, set_cursor=True, return_output=False, update_buffer=True): # {{{
+    def read(self, timeout=1, set_cursor=True, return_output=False, update_buffer=True):
+        """ Read from console and update Vim buffer. """
 
         try:
             stats = self.proc.get_stats()
@@ -79,48 +106,59 @@ class ConqueSole(Conque):
             if not stats:
                 return
 
-            self.buffer_redraw_ct += 1
-            self.screen_redraw_ct += 1
+            # disable screen and buffer redraws in fast mode
+            if not CONQUE_FAST_MODE:
+                self.buffer_redraw_ct += 1
+                self.screen_redraw_ct += 1
 
             update_top = 0
             update_bottom = 0
             lines = []
 
             # full buffer redraw, our favorite!
-            if self.buffer_redraw_ct == CONQUE_SOLE_BUFFER_REDRAW:
-                self.buffer_redraw_ct = 0
-                update_top = 0
-                update_bottom = stats['top_offset'] + self.lines
-                (lines, attributes) = self.proc.read(update_top, update_bottom)
-                if return_output:
-                    output = self.get_new_output(lines, update_top, stats)
-                if update_buffer:
-                    for i in range(update_top, update_bottom + 1):
-                        self.plain_text(i, lines[i], attributes[i], stats)
+            #if self.buffer_redraw_ct == CONQUE_SOLE_BUFFER_REDRAW:
+            #    self.buffer_redraw_ct = 0
+            #    update_top = 0
+            #    update_bottom = stats['top_offset'] + self.lines
+            #    (lines, attributes) = self.proc.read(update_top, update_bottom)
+            #    if return_output:
+            #        output = self.get_new_output(lines, update_top, stats)
+            #    if update_buffer:
+            #        for i in range(update_top, update_bottom + 1):
+            #            if CONQUE_FAST_MODE:
+            #                self.plain_text(i, lines[i], None, stats)
+            #            else:
+            #                self.plain_text(i, lines[i], attributes[i], stats)
 
             # full screen redraw
-            elif stats['cursor_y'] + 1 != self.l or stats['top_offset'] != self.window_top or self.screen_redraw_ct == CONQUE_SOLE_SCREEN_REDRAW:
+            if stats['cursor_y'] + 1 != self.l or stats['top_offset'] != self.window_top or self.screen_redraw_ct >= CONQUE_SOLE_SCREEN_REDRAW:
+
                 self.screen_redraw_ct = 0
                 update_top = self.window_top
-                update_bottom = stats['top_offset'] + self.lines + 1
+                update_bottom = max([stats['top_offset'] + self.lines + 1, stats['cursor_y']])
                 (lines, attributes) = self.proc.read(update_top, update_bottom - update_top + 1)
                 if return_output:
                     output = self.get_new_output(lines, update_top, stats)
                 if update_buffer:
                     for i in range(update_top, update_bottom + 1):
-                        self.plain_text(i, lines[i - update_top], attributes[i - update_top], stats)
+                        if CONQUE_FAST_MODE:
+                            self.plain_text(i, lines[i - update_top], None, stats)
+                        else:
+                            self.plain_text(i, lines[i - update_top], attributes[i - update_top], stats)
 
 
             # single line redraw
             else:
                 update_top = stats['cursor_y']
-                update_bottom = stats['cursor_y']
                 (lines, attributes) = self.proc.read(update_top, 1)
                 if return_output:
                     output = self.get_new_output(lines, update_top, stats)
                 if update_buffer:
-                    if lines[0].rstrip() != self.buffer[update_top].rstrip():
-                        self.plain_text(update_top, lines[0], attributes[0], stats)
+                    if lines[0].rstrip() != u(self.buffer[update_top].rstrip()):
+                        if CONQUE_FAST_MODE:
+                            self.plain_text(update_top, lines[0], None, stats)
+                        else:
+                            self.plain_text(update_top, lines[0], attributes[0], stats)
 
 
             # reset current position
@@ -138,12 +176,10 @@ class ConqueSole(Conque):
         except:
 
             pass
-        # }}}
 
-    #########################################################################
-    # Calculate the "new" output from this read. Fake but useful
 
-    def get_new_output(self, lines, update_top, stats): # {{{
+    def get_new_output(self, lines, update_top, stats):
+        """ Calculate the "new" output from this read. Fake but useful """
 
         if not (stats['cursor_y'] + 1 > self.l or (stats['cursor_y'] + 1 == self.l and stats['cursor_x'] + 1 > self.c)):
             return ""
@@ -175,18 +211,19 @@ class ConqueSole(Conque):
 
 
         return "\n".join(new_output)
-        # }}}
 
-    #########################################################################
-    # update the buffer
 
-    def plain_text(self, line_nr, text, attributes, stats): # {{{
+    def plain_text(self, line_nr, text, attributes, stats):
+        """ Write plain text to Vim buffer. """
 
 
 
 
 
-        self.l = line_nr + 1
+        # handle line offset
+        line_nr += self.offset
+
+        self.l = line_nr + 1 
 
         # remove trailing whitespace
         text = text.rstrip()
@@ -197,21 +234,28 @@ class ConqueSole(Conque):
             text = self.add_conceal_color(text, attributes, stats, line_nr)
 
 
+        # deal with character encoding
+        if CONQUE_PYTHON_VERSION == 2:
+            val = text.encode(self.screen_encoding)
+        else:
+            # XXX / Vim's python3 interface doesn't accept bytes object
+            val = str(text)
+
         # update vim buffer
         if len(self.buffer) <= line_nr:
-            self.buffer.append(text)
+            self.buffer.append(val)
         else:
-            self.buffer[line_nr] = text
+            self.buffer[line_nr] = val
 
-        if not self.color_mode == 'conceal':
-            self.do_color(attributes=attributes, stats=stats)
+        if self.enable_colors and not self.color_mode == 'conceal' and line_nr > self.l - CONQUE_MAX_SYNTAX_LINES:
+            relevant = attributes[0:len(text)]
+            if line_nr not in self.attribute_cache or self.attribute_cache[line_nr] != relevant:
+                self.do_color(attributes=relevant, stats=stats)
+                self.attribute_cache[line_nr] = relevant
 
-        # }}}
 
-    #########################################################################
-    # add conceal color
-
-    def add_conceal_color(self, text, attributes, stats, line_nr): # {{{
+    def add_conceal_color(self, text, attributes, stats, line_nr):
+        """ Add 'conceal' color strings to output text """
 
         # stop here if coloration is disabled
         if not self.enable_colors:
@@ -222,71 +266,42 @@ class ConqueSole(Conque):
             return text
 
         new_text = ''
-
-        # if text attribute is different, call add_color()
-        attr = None
-        start = 0
         self.color_conceals[line_nr] = []
+
+        attribute_chunks = CONQUE_WIN32_REGEX_ATTR.findall(attributes)
+        offset = 0
         ends = []
-        for i in range(0, len(attributes)):
-            c = ord(attributes[i])
+        for attr in attribute_chunks:
+            attr_num = ord(attr[1])
+            ends = []
+            if attr_num != stats['default_attribute']:
 
-            if c != attr:
-                if attr and attr != stats['default_attribute']:
+                color = self.translate_color(attr_num)
 
-                    color = self.translate_color(attr)
+                new_text += chr(27) + 'sf' + color['fg_code'] + ';'
+                ends.append(chr(27) + 'ef' + color['fg_code'] + ';')
+                self.color_conceals[line_nr].append(offset)
 
-                    new_text += chr(27) + 'sf' + color['fg_code'] + ';'
-                    ends.append(chr(27) + 'ef' + color['fg_code'] + ';')
-                    self.color_conceals[line_nr].append(start)
+                if attr_num > 15:
+                    new_text += chr(27) + 'sb' + color['bg_code'] + ';'
+                    ends.append(chr(27) + 'eb' + color['bg_code'] + ';')
+                    self.color_conceals[line_nr].append(offset)
 
-                    if c > 15:
-                        new_text += chr(27) + 'sf' + color['bg_code'] + ';'
-                        ends.append(chr(27) + 'ef' + color['bg_code'] + ';')
-                        self.color_conceals[line_nr].append(start)
+            new_text += text[offset:offset + len(attr[0])]
 
-                new_text += text[start:i]
+            # close color regions
+            ends.reverse()
+            for i in range(0, len(ends)):
+                self.color_conceals[line_nr].append(len(new_text))
+                new_text += ends[i]
 
-                # close color regions
-                ends.reverse()
-                for j in range(0, len(ends)):
-                    new_text += ends[j]
-                    self.color_conceals[line_nr].append(i)
-                ends = []
-
-                start = i
-                attr = c
-
-
-        if attr and attr != stats['default_attribute']:
-
-            color = self.translate_color(attr)
-
-            new_text += chr(27) + 'sf' + color['fg_code'] + ';'
-            ends.append(chr(27) + 'ef' + color['fg_code'] + ';')
-
-            if c > 15:
-                new_text += chr(27) + 'sf' + color['bg_code'] + ';'
-                ends.append(chr(27) + 'ef' + color['bg_code'] + ';')
-
-        new_text += text[start:]
-
-        # close color regions
-        ends.reverse()
-        for i in range(0, len(ends)):
-            new_text += ends[i]
+            offset += len(attr[0])
 
         return new_text
 
-        # }}}
 
-    #########################################################################
-
-    def do_color(self, start=0, end=0, attributes='', stats=None): # {{{
-
-        # stop here if coloration is disabled
-        if not self.enable_colors:
-            return
+    def do_color(self, start=0, end=0, attributes='', stats=None):
+        """ Convert Windows console attributes into Vim syntax highlighting """
 
         # if no colors for this line, clear everything out
         if len(attributes) == 0 or attributes == u(chr(stats['default_attribute'])) * len(attributes):
@@ -294,29 +309,18 @@ class ConqueSole(Conque):
             self.apply_color(1, len(attributes), self.l)
             return
 
-        # if text attribute is different, call add_color()
-        attr = None
-        start = 0
-        for i in range(0, len(attributes)):
-            c = ord(attributes[i])
-
-            if c != attr:
-                if attr and attr != stats['default_attribute']:
-                    self.color_changes = self.translate_color(attr)
-                    self.apply_color(start + 1, i + 1, self.l)
-                start = i
-                attr = c
-
-        if attr and attr != stats['default_attribute']:
-            self.color_changes = self.translate_color(attr)
-            self.apply_color(start + 1, len(attributes), self.l)
+        attribute_chunks = CONQUE_WIN32_REGEX_ATTR.findall(attributes)
+        offset = 0
+        for attr in attribute_chunks:
+            attr_num = ord(attr[1])
+            if attr_num != stats['default_attribute']:
+                self.color_changes = self.translate_color(attr_num)
+                self.apply_color(offset + 1, offset + len(attr[0]) + 1, self.l)
+            offset += len(attr[0])
 
 
-        # }}}
-
-    #########################################################################
-
-    def translate_color(self, attr): # {{{
+    def translate_color(self, attr):
+        """ Convert Windows console attributes into RGB colors """
 
         # check for cached color
         if attr in self.color_cache:
@@ -363,23 +367,19 @@ class ConqueSole(Conque):
 
         return color
 
-        # }}}
 
-    #########################################################################
-    # write virtual key code to shared memory using proprietary escape seq
-
-    def write_vk(self, vk_code): # {{{
+    def write_vk(self, vk_code):
+        """ write virtual key code to shared memory using proprietary escape seq """
 
         self.proc.write_vk(vk_code)
 
-        # }}}
 
-    # *********************************************************************************************
-    # resize if needed
-
-    def update_window_size(self): # {{{
+    def update_window_size(self):
+        """ Resize underlying console if Vim buffer size has changed """
 
         if vim.current.window.width != self.columns or vim.current.window.height != self.lines:
+
+
 
             # reset all window size attributes to default
             self.columns = vim.current.window.width
@@ -390,12 +390,14 @@ class ConqueSole(Conque):
 
             self.proc.window_resize(vim.current.window.height, vim.current.window.width)
 
-        # }}}
 
-    # *********************************************************************************************
-    # resize if needed
+    def set_cursor(self, line, column):
+        """ Update cursor position in Vim buffer """
 
-    def set_cursor(self, line, column): # {{{
+
+
+        # handle offset
+        line += self.offset
 
         # shift cursor position to handle concealed text
         if self.enable_colors and self.color_mode == 'conceal':
@@ -406,54 +408,51 @@ class ConqueSole(Conque):
                     else:
                         break
 
+
+
         # figure out line
-        real_line = line
-        if real_line > len(self.buffer):
-            for l in range(len(self.buffer) - 1, real_line):
+        buffer_line = line
+        if buffer_line > len(self.buffer):
+            for l in range(len(self.buffer) - 1, buffer_line):
                 self.buffer.append('')
 
         # figure out column
         real_column = column
-        if len(self.buffer[real_line - 1]) < real_column:
-            self.buffer[real_line - 1] = self.buffer[real_line - 1] + ' ' * (real_column - len(self.buffer[real_line - 1]))
+        if len(self.buffer[buffer_line - 1]) < real_column:
+            self.buffer[buffer_line - 1] = self.buffer[buffer_line - 1] + ' ' * (real_column - len(self.buffer[buffer_line - 1]))
 
         # python version is occasionally grumpy
         try:
-            vim.current.window.cursor = (real_line, real_column - 1)
+            vim.current.window.cursor = (buffer_line, real_column - 1)
         except:
-            vim.command('call cursor(' + str(real_line) + ', ' + str(real_column) + ')')
-    # }}}
+            vim.command('call cursor(' + str(buffer_line) + ', ' + str(real_column) + ')')
 
 
-    # *********************************************************************************************
-    # go into idle mode
-
-    def idle(self): # {{{
+    def idle(self):
+        """ go into idle mode """
 
         self.proc.idle()
 
-        # }}}
 
-    # *********************************************************************************************
-    # resume from idle mode
-
-    def resume(self): # {{{
+    def resume(self):
+        """ resume from idle mode """
 
         self.proc.resume()
 
-        # }}}
-
-    # *********************************************************************************************
-    # end subprocess
 
     def close(self):
+        """ end console subprocess """
         self.proc.close()
 
-    # *********************************************************************************************
-    # end subprocess forcefully
 
     def abort(self):
+        """ end subprocess forcefully """
         self.proc.close()
+
+
+    def get_buffer_line(self, line):
+        """ get buffer line """
+        return line
 
 
 # vim:foldmethod=marker

@@ -1,11 +1,11 @@
-# FILE:     autoload/conque_term/conque_sole_communicator.py {{{
+# FILE:     autoload/conque_term/conque_sole_communicator.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2010-11-15
-# VERSION:  2.0, for Vim 7.0
+# MODIFIED: 2011-04-04
+# VERSION:  2.1, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2010 Nico Raffo
+# Copyright (C) 2009-2011 Nico Raffo
 #
 # MIT License
 #
@@ -25,17 +25,20 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE. }}}
+# THE SOFTWARE.
 
 """
+
 ConqueSoleCommunicator
 
-Script to transfer communications between python being run in Vim and a
-subprocess run inside a Windows console. This is required since interactive
-programs in Windows appear to require a console, and python run in Vim is
-not attached to any console. So a console version of python must be initiated
-for the subprocess. Communication is then done with the use of shared memory
-objects. Good times!
+This script will create a new Windows console and start the requested program 
+inside of it. This process is launched independently from the parent Vim
+program, so it has no access to the vim module.
+
+The main loop in this script reads data from the console and syncs it onto 
+blocks of memory shared with the Vim process. In this way the Vim process
+and this script can communicate with each other.
+
 """
 
 import time
@@ -54,16 +57,11 @@ if __name__ == '__main__':
     # attempt to catch ALL exceptions to fend of zombies
     try:
 
-        # startup and config {{{
-
         # simple arg validation
 
         if len(sys.argv) < 5:
 
             exit()
-
-        # shared memory size
-        CONQUE_SOLE_COMMANDS_SIZE = 255
 
         # maximum time this thing reads. 0 means no limit. Only for testing.
         max_loops = 0
@@ -86,12 +84,18 @@ if __name__ == '__main__':
         # console height
         console_height = int(sys.argv[3])
 
+        # code page
+        code_page = int(sys.argv[4])
+
+        # code page
+        fast_mode = int(sys.argv[5])
+
         # the actual subprocess to run
-        cmd_line = " ".join(sys.argv[4:])
+        cmd_line = " ".join(sys.argv[6:])
 
 
         # width and height
-        options = {'LINES': console_height, 'COLUMNS': console_width}
+        options = {'LINES': console_height, 'COLUMNS': console_width, 'CODE_PAGE': code_page, 'FAST_MODE': fast_mode}
 
 
 
@@ -106,20 +110,16 @@ if __name__ == '__main__':
                 is_idle = True
                 shm_command.clear()
 
-        # }}}
 
         ##############################################################
         # Create the subprocess
 
-        # {{{
         proc = ConqueSoleSubprocess()
         res = proc.open(cmd_line, mem_key, options)
 
         if not res:
 
             exit()
-
-        # }}}
 
         ##############################################################
         # main loop!
@@ -135,7 +135,7 @@ if __name__ == '__main__':
                 if not proc.is_alive():
 
                     proc.close()
-                    exit()
+                    break
 
                 # check for change in buffer focus
                 cmd = shm_command.read()
