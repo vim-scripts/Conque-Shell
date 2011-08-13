@@ -1,11 +1,11 @@
 # FILE:     autoload/conque_term/conque.py 
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2011-04-04
-# VERSION:  2.1, for Vim 7.0
+# MODIFIED: 2011-08-12
+# VERSION:  2.2, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2011 Nico Raffo
+# Copyright (C) 2009-__YEAR__ Nico Raffo
 #
 # MIT License
 #
@@ -48,7 +48,7 @@ Usage:
 import vim
 import re
 import math
-
+import time # DEBUG
 
 class Conque:
 
@@ -111,6 +111,8 @@ class Conque:
     # used for auto_read actions
     read_count = 0
 
+    # input buffer, array of ordinals
+    input_buffer = []
 
     def open(self):
         """ Start program and initialize this instance. 
@@ -214,6 +216,10 @@ class Conque:
         else:
             self.write(input, set_cursor, read)
 
+
+    def write_buffered_ord(self, chr):
+        """ Add character ordinal to input buffer. In case we're not allowed to modify buffer a time of input. """
+        self.input_buffer.append(chr)
 
 
     def read(self, timeout=1, set_cursor=True, return_output=False, update_buffer=True):
@@ -361,6 +367,13 @@ class Conque:
         to execute this command, typically set to go off after 50 ms of inactivity.
 
         """
+        # process buffered input if any
+        if len(self.input_buffer):
+            for chr in self.input_buffer:
+                self.write_ord(chr, set_cursor=False, read=False)
+            self.input_buffer = []
+            self.read(1)
+
         # check subprocess status, but not every time since it's CPU expensive
         if self.read_count % 32 == 0:
             if not self.proc.is_alive():

@@ -276,11 +276,12 @@ program output in insert mode.
 >
     let g:ConqueTerm_CloseOnEnd = 0
 <
-3.1.8 Hide start messages                           *ConqueTerm_StartMessages*
+3.1.8 Show start messages                           *ConqueTerm_StartMessages*
 
-Unused. Startup messages are always hidden.
+Display warning messages when starting up ConqueTerm if your system is
+configured incorrectly.
 >
-    let g:ConqueTerm_StartMessages = 0
+    let g:ConqueTerm_StartMessages = 1
 <
 3.1.9 Regex for highlighting your prompt              *ConqueTerm_PromptRegex*
 

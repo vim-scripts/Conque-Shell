@@ -1,11 +1,11 @@
 " FILE:     autoload/conque_term.vim {{{
 " AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 " WEBSITE:  http://conque.googlecode.com
-" MODIFIED: 2011-04-04
-" VERSION:  2.1, for Vim 7.0
+" MODIFIED: 2011-08-12
+" VERSION:  2.2, for Vim 7.0
 " LICENSE:
 " Conque - Vim terminal/console emulator
-" Copyright (C) 2009-2011 Nico Raffo 
+" Copyright (C) 2009-__YEAR__ Nico Raffo 
 "
 " MIT License
 " 
@@ -235,7 +235,9 @@ function! conque_term#dependency_check() " {{{
         if line =~ '^ ' || line =~ '^--' || line =~ 'matchparen'
             continue
         endif
-        echohl WarningMsg | echomsg "Warning: Global CursorHoldI and CursorMovedI autocommands may cause ConqueTerm to run slowly." | echohl None
+        if g:ConqueTerm_StartMessages
+            echohl WarningMsg | echomsg "Warning: Global CursorHoldI and CursorMovedI autocommands may cause ConqueTerm to run slowly." | echohl None
+        endif
     endfor
 
     " check for compatible mode
@@ -264,40 +266,40 @@ endfunction " }}}
 " **********************************************************************************************************
 
 " {{{
-if g:ConqueTerm_StartMessages
-    let msg_file = s:scriptdirpy . 'version.vim'
-    let msg_show = 1
-    let msg_ct = 1
-
-    " we can write to conque_term directory
-    if filewritable(s:scriptdirpy) == 2
-
-        if filewritable(msg_file)
-
-            " read current message file
-            try
-                silent execute "source " . msg_file
-                if exists('g:ConqueTerm_MsgCt') && exists('g:ConqueTerm_MsgVer')
-                    if g:ConqueTerm_MsgVer == g:ConqueTerm_Version && g:ConqueTerm_MsgCt > 2
-                        let msg_show = 0
-                    else
-                        let msg_ct = g:ConqueTerm_MsgCt + 1
-                    endif
-                endif
-            catch
-            endtry
-        endif
-
-        " update message file
-        if msg_show
-            let file_contents = ['let g:ConqueTerm_MsgCt = ' . msg_ct, 'let g:ConqueTerm_MsgVer = ' . g:ConqueTerm_Version]
-            call writefile(file_contents, msg_file)
-        endif
-    endif
-
-    " save our final decision
-    let g:ConqueTerm_StartMessages = msg_show
-endif
+"if g:ConqueTerm_StartMessages
+"    let msg_file = s:scriptdirpy . 'version.vim'
+"    let msg_show = 1
+"    let msg_ct = 1
+"
+"    " we can write to conque_term directory
+"    if filewritable(s:scriptdirpy) == 2
+"
+"        if filewritable(msg_file)
+"
+"            " read current message file
+"            try
+"                silent execute "source " . msg_file
+"                if exists('g:ConqueTerm_MsgCt') && exists('g:ConqueTerm_MsgVer')
+"                    if g:ConqueTerm_MsgVer == g:ConqueTerm_Version && g:ConqueTerm_MsgCt > 2
+"                        let msg_show = 0
+"                    else
+"                        let msg_ct = g:ConqueTerm_MsgCt + 1
+"                    endif
+"                endif
+"            catch
+"            endtry
+"        endif
+"
+"        " update message file
+"        if msg_show
+"            let file_contents = ['let g:ConqueTerm_MsgCt = ' . msg_ct, 'let g:ConqueTerm_MsgVer = ' . g:ConqueTerm_Version]
+"            call writefile(file_contents, msg_file)
+"        endif
+"    endif
+"
+"    " save our final decision
+"    let g:ConqueTerm_StartMessages = msg_show
+"endif
 " }}}
 
 " **********************************************************************************************************
@@ -495,7 +497,7 @@ function! conque_term#open(...) "{{{
         let options["TERM"] = g:ConqueTerm_TERM
         let options["CODE_PAGE"] = g:ConqueTerm_CodePage
         let options["color"] = g:ConqueTerm_Color
-        let options["offset"] = g:ConqueTerm_StartMessages * 10
+        let options["offset"] = 0 " g:ConqueTerm_StartMessages * 10
 
         if s:platform == 'unix'
             execute s:py . ' ' . g:ConqueTerm_Var . ' = Conque()'
@@ -578,6 +580,9 @@ function! conque_term#set_buffer_settings(command, vim_startup_commands) "{{{
         setlocal conceallevel=3
         setlocal concealcursor=nic
     endif
+    if g:ConqueTerm_ReadUnfocused
+        set cpoptions+=I       " Don't remove autoindent when moving cursor up and down
+    endif
     setfiletype conque_term    " useful
     sil exe "setlocal syntax=" . g:ConqueTerm_Syntax
 
@@ -588,7 +593,7 @@ endfunction " }}}
 
 " send normal character key press to terminal
 function! conque_term#key_press() "{{{
-    sil exe s:py . ' ' . b:ConqueTerm_Var . ".write_ord(" . char2nr(v:char) . ")"
+    sil exe s:py . ' ' . b:ConqueTerm_Var . ".write_buffered_ord(" . char2nr(v:char) . ")"
     sil let v:char = ''
 endfunction " }}}
 
@@ -683,21 +688,12 @@ function! conque_term#set_mappings(action) "{{{
 
     " Map <C-w> in insert mode
     if exists('g:ConqueTerm_CWInsert') && g:ConqueTerm_CWInsert == 1
-        inoremap <silent> <buffer> <C-w>j <Esc><C-w>j
-        inoremap <silent> <buffer> <C-w>k <Esc><C-w>k
-        inoremap <silent> <buffer> <C-w>h <Esc><C-w>h
-        inoremap <silent> <buffer> <C-w>l <Esc><C-w>l
-        inoremap <silent> <buffer> <C-w><Up> <Esc><C-w><Up>
-        inoremap <silent> <buffer> <C-w><Down> <Esc><C-w><Down>
-        inoremap <silent> <buffer> <C-w><Right> <Esc><C-w><Right>
-        inoremap <silent> <buffer> <C-w><Left> <Esc><C-w><Left>
-        inoremap <silent> <buffer> <C-w><C-w> <Esc><C-w><C-w>
-        inoremap <silent> <buffer> <C-w>w <Esc><C-w>w
+        inoremap <silent> <buffer> <C-w> <Esc><C-w>
     endif
     " }}}
 
     " map 33 and beyond {{{
-    if exists('##InsertCharPre')
+    if exists('##InsertCharPre') && g:ConqueTerm_InsertCharPre == 1
         if l:action == 'start'
             autocmd InsertCharPre <buffer> call conque_term#key_press()
         else
@@ -728,6 +724,8 @@ function! conque_term#set_mappings(action) "{{{
         if s:platform == 'unix'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <BS> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x08"))<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Space> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u(" "))<CR>'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-BS> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x08"))<CR>'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-Space> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u(" "))<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Up> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x1b[A"))<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Down> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x1b[B"))<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Right> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x1b[C"))<CR>'
@@ -737,6 +735,9 @@ function! conque_term#set_mappings(action) "{{{
         else
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <BS> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x08"))<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Space> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u(" "))<CR>'
+
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-BS> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u("\x08"))<CR>'
+            sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-Space> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write(u(" "))<CR>'
 
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Up> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write_vk(' . s:windows_vk.VK_UP . ')<CR>'
             sil exe 'i' . map_modifier . 'map <silent> <buffer> <Down> <C-o>:' . s:py . ' ' . b:ConqueTerm_Var . '.write_vk(' . s:windows_vk.VK_DOWN . ')<CR>'
@@ -755,6 +756,8 @@ function! conque_term#set_mappings(action) "{{{
     else
         sil exe 'i' . map_modifier . 'map <silent> <buffer> <BS>'
         sil exe 'i' . map_modifier . 'map <silent> <buffer> <Space>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-BS>'
+        sil exe 'i' . map_modifier . 'map <silent> <buffer> <S-Space>'
         sil exe 'i' . map_modifier . 'map <silent> <buffer> <Up>'
         sil exe 'i' . map_modifier . 'map <silent> <buffer> <Down>'
         sil exe 'i' . map_modifier . 'map <silent> <buffer> <Right>'
@@ -927,7 +930,14 @@ function! conque_term#read_all(insert_mode) "{{{
 
     " restart updatetime
     if a:insert_mode
-        call feedkeys("\<C-o>f\e", "n")
+        "call feedkeys("\<C-o>f\e", "n")
+        let p = getpos('.')
+        if p[1] == 1
+          sil exe 'call feedkeys("\<Down>\<Up>", "n")'
+        else
+          sil exe 'call feedkeys("\<Up>\<Down>", "n")'
+        endif
+        call setpos('.', p)
     else
         call feedkeys("f\e", "n")
     endif

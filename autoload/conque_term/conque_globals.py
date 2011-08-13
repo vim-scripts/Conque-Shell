@@ -1,11 +1,11 @@
 # FILE:     autoload/conque_term/conque_globals.py
 # AUTHOR:   Nico Raffo <nicoraffo@gmail.com>
 # WEBSITE:  http://conque.googlecode.com
-# MODIFIED: 2011-04-04
-# VERSION:  2.1, for Vim 7.0
+# MODIFIED: 2011-08-12
+# VERSION:  2.2, for Vim 7.0
 # LICENSE:
 # Conque - Vim terminal/console emulator
-# Copyright (C) 2009-2011 Nico Raffo
+# Copyright (C) 2009-__YEAR__ Nico Raffo
 #
 # MIT License
 #
@@ -31,9 +31,9 @@
 
 import sys
 import re
+import os # DEBUG
 
-
-
+import traceback # DEBUG
 
 # PYTHON VERSION
 CONQUE_PYTHON_VERSION = sys.version_info[0]
@@ -71,7 +71,7 @@ def uchr(str):
         return unichr(str)
 
 
-# Logging
+
 
 
 
